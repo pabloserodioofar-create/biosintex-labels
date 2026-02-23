@@ -1,0 +1,6 @@
+streamlit
+pandas
+openpyxl
+streamlit-searchbox
+datetime
+st-gsheets-connection
