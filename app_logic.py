@@ -49,13 +49,15 @@ class AnalysisManager:
         try:
             sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=60)
             results['skus'] = sku_df.to_dict('records')
-        except: missing_tabs.append("SKU")
+        except Exception as e: 
+            missing_tabs.append(f"SKU (Error: {str(e)[:50]}...)")
             
         # Cargar Proveedores
         try:
             prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=60)
             results['providers'] = prov_df.to_dict('records')
-        except: missing_tabs.append("Proveedores")
+        except Exception as e: 
+            missing_tabs.append(f"Proveedores (Error: {str(e)[:50]}...)")
             
         # Cargar Historial para presentaciones
         try:

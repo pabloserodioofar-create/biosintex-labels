@@ -5,8 +5,8 @@ from streamlit_searchbox import st_searchbox
 from datetime import datetime
 import os
 
-# Google Sheet URL
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ/edit?usp=sharing"
+# Google Sheet URL (Clean version)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
 # Page config
 st.set_page_config(
