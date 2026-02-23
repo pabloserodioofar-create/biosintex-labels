@@ -12,10 +12,7 @@ class AnalysisManager:
         try:
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="State", ttl=0)
             if not df.empty:
-                # Filtrar posibles filas vacias
-                df = df.dropna(subset=['last_number'])
-                if not df.empty:
-                    return df.iloc[0].to_dict()
+                return df.dropna(subset=['last_number']).iloc[0].to_dict()
         except: pass
         return {"last_number": 0, "last_reception": 0, "year": datetime.now().year % 100}
 
@@ -23,8 +20,7 @@ class AnalysisManager:
         try:
             df = pd.DataFrame([state])
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet="State", data=df)
-        except Exception as e:
-            st.error(f"Error en 'State': {str(e)[:100]}")
+        except: pass
 
     def generate_next_number(self):
         state = self.get_state()
@@ -46,36 +42,41 @@ class AnalysisManager:
     def get_excel_data(self):
         results = {}
         missing = []
+        
+        # Intentamos leer SKU de varias formas
         try:
-            sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=10)
-            results['skus'] = sku_df.to_dict('records')
-        except Exception as e: missing.append(f"SKU ({str(e)[:30]})")
+            sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
+            if not sku_df.empty: results['skus'] = sku_df.to_dict('records')
+            else: missing.append("SKU (está vacía)")
+        except Exception as e: 
+            missing.append(f"SKU (No se encontró o error: {str(e)[:20]})")
         
         try:
-            prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=10)
-            results['providers'] = prov_df.to_dict('records')
-        except Exception as e: missing.append(f"Proveedores ({str(e)[:30]})")
-        
+            prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
+            if not prov_df.empty: results['providers'] = prov_df.to_dict('records')
+            else: missing.append("Proveedores (está vacía)")
+        except Exception as e: 
+            missing.append(f"Proveedores (No se encontró o error: {str(e)[:20]})")
+            
         try:
-            df_hist = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Datos a completar", ttl=10)
-            if 'Presentacion' in df_hist.columns:
+            df_hist = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Datos a completar", ttl=0)
+            if not df_hist.empty and 'Presentacion' in df_hist.columns:
                 vals = df_hist['Presentacion'].dropna().unique().tolist()
                 results['presentations'] = sorted(list(set([str(v).upper().strip() for v in vals if v])))
         except: pass
             
-        if missing: results['error'] = f"Error en pestañas: {', '.join(missing)}"
+        if missing: results['error'] = f"Problema: {', '.join(missing)}"
         return results
 
     def save_entry(self, data):
         try:
             ws = "Datos a completar"
-            # Importante: leer sin cache para no pisar datos
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             updated = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=updated)
             return (True, "OK")
-        except Exception as e:
-            return (False, f"Error al guardar: {str(e)[:100]}")
+        except:
+            return (False, "Error al guardar. Verifica la pestaña 'Datos a completar'.")
 
     def reset_system(self):
         try:
@@ -84,5 +85,5 @@ class AnalysisManager:
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             empty = pd.DataFrame(columns=df.columns)
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=empty)
-            return True, "Reset ok"
-        except: return False, "Error reset"
+            return True, "OK"
+        except: return False, "Error"
