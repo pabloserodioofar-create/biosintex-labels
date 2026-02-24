@@ -5,11 +5,32 @@ from streamlit_gsheets import GSheetsConnection
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        self.spreadsheet_url = spreadsheet_url
+        # Limpiamos la URL para asegurar compatibilidad total
+        if "/edit" in spreadsheet_url:
+            self.spreadsheet_url = spreadsheet_url.split("/edit")[0]
+        else:
+            self.spreadsheet_url = spreadsheet_url
+        
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
     def _get_ws(self, base, env):
         return base if env == "Producción" else f"{base}_Test"
+
+    def get_excel_data(self):
+        res = {"skus": [], "providers": [], "error": None}
+        try:
+            # Intentamos leer SKU
+            sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=60)
+            if not sku_df.empty:
+                res['skus'] = sku_df.to_dict('records')
+            
+            # Intentamos leer Proveedores
+            prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=60)
+            if not prov_df.empty:
+                res['providers'] = prov_df.to_dict('records')
+        except Exception as e:
+            res['error'] = f"No se pudo acceder a las pestañas. Error: {str(e)[:100]}"
+        return res
 
     def get_state(self, env="Producción"):
         try:
@@ -17,16 +38,14 @@ class AnalysisManager:
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             if not df.empty:
                 return df.iloc[0].to_dict()
-        except Exception as e:
-            st.warning(f"Aviso: No se pudo leer el estado ({ws}). Usando valores iniciales.")
+        except: pass
         return {"last_number": 0, "last_reception": 0, "year": 26}
 
     def save_state(self, state, env="Producción"):
         try:
             ws = self._get_ws("State", env)
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=pd.DataFrame([state]))
-        except Exception as e:
-            st.error(f"Error al guardar estado: {e}")
+        except: pass
 
     def generate_next_number(self, env="Producción"):
         s = self.get_state(env)
@@ -45,35 +64,17 @@ class AnalysisManager:
         self.save_state(s, env)
         return str(s["last_reception"])
 
-    def get_excel_data(self):
-        res = {"skus": [], "providers": [], "error": None}
-        try:
-            # Intentamos leer SKU
-            sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=60)
-            if not sku_df.empty:
-                res['skus'] = sku_df.to_dict('records')
-            
-            # Intentamos leer Proveedores
-            prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=60)
-            if not prov_df.empty:
-                res['providers'] = prov_df.to_dict('records')
-        except Exception as e:
-            res['error'] = str(e)
-        return res
-
     def get_history(self, env="Producción"):
         try:
             ws = self._get_ws("Datos a completar", env)
             return self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-        except: 
-            return pd.DataFrame()
+        except: return pd.DataFrame()
 
     def save_entry(self, data, env="Producción"):
         try:
             ws = self._get_ws("Datos a completar", env)
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-            updated = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
-            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=updated)
+            upd = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=upd)
             return True, "OK"
-        except Exception as e: 
-            return False, str(e)
+        except Exception as e: return False, str(e)
