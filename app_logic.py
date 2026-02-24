@@ -2,19 +2,35 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
+import io
+import requests
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        self.spreadsheet_url = spreadsheet_url
+        # ID unico de tu documento
+        self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
+        self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
+
+    def _read_public_csv(self, sheet_name):
+        """Metodo alternativo: Lee el CSV publico directamente de Google si la conexion oficial falla"""
+        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/gviz/tq?tqx=out:csv&sheet={sheet_name.replace(' ', '%20')}"
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                return pd.read_csv(io.StringIO(response.text))
+        except: pass
+        return pd.DataFrame()
 
     def get_state(self):
         try:
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="State", ttl=0)
+            if df.empty: df = self._read_public_csv("State")
             if not df.empty:
-                return df.dropna(subset=['last_number']).iloc[0].to_dict()
+                data = df.iloc[0].to_dict()
+                return {"last_number": int(data.get("last_number", 0)), "last_reception": int(data.get("last_reception", 0)), "year": int(data.get("year", 26))}
         except: pass
-        return {"last_number": 0, "last_reception": 0, "year": datetime.now().year % 100}
+        return {"last_number": 0, "last_reception": 0, "year": 26}
 
     def save_state(self, state):
         try:
@@ -23,67 +39,42 @@ class AnalysisManager:
         except: pass
 
     def generate_next_number(self):
-        state = self.get_state()
-        curr_year = datetime.now().year % 100
-        if int(state.get("year", 0)) != curr_year:
-            state["year"] = curr_year
-            state["last_number"] = 1
-        else:
-            state["last_number"] = int(state.get("last_number", 0)) + 1
-        self.save_state(state)
-        return f"{int(state['last_number']):04d}/{state['year']}"
+        s = self.get_state()
+        y = datetime.now().year % 100
+        if int(s["year"]) != y: s["year"] = y; s["last_number"] = 1
+        else: s["last_number"] += 1
+        self.save_state(s)
+        return f"{s['last_number']:04d}/{s['year']}"
 
     def generate_next_reception(self):
-        state = self.get_state()
-        state["last_reception"] = int(state.get("last_reception", 0)) + 1
-        self.save_state(state)
-        return str(state["last_reception"])
+        s = self.get_state()
+        s["last_reception"] += 1
+        self.save_state(s)
+        return str(s["last_reception"])
 
     def get_excel_data(self):
-        results = {}
-        missing = []
+        res = {}
+        # Leer SKU
+        df_s = self._read_public_csv("SKU")
+        if df_s.empty: 
+            try: df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
+            except: pass
+        if not df_s.empty: res['skus'] = df_s.to_dict('records')
+
+        # Leer Proveedores
+        df_p = self._read_public_csv("Proveedores")
+        if df_p.empty:
+            try: df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
+            except: pass
+        if not df_p.empty: res['providers'] = df_p.to_dict('records')
         
-        # Intentamos leer SKU de varias formas
-        try:
-            sku_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
-            if not sku_df.empty: results['skus'] = sku_df.to_dict('records')
-            else: missing.append("SKU (está vacía)")
-        except Exception as e: 
-            missing.append(f"SKU (No se encontró o error: {str(e)[:20]})")
-        
-        try:
-            prov_df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
-            if not prov_df.empty: results['providers'] = prov_df.to_dict('records')
-            else: missing.append("Proveedores (está vacía)")
-        except Exception as e: 
-            missing.append(f"Proveedores (No se encontró o error: {str(e)[:20]})")
-            
-        try:
-            df_hist = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Datos a completar", ttl=0)
-            if not df_hist.empty and 'Presentacion' in df_hist.columns:
-                vals = df_hist['Presentacion'].dropna().unique().tolist()
-                results['presentations'] = sorted(list(set([str(v).upper().strip() for v in vals if v])))
-        except: pass
-            
-        if missing: results['error'] = f"Problema: {', '.join(missing)}"
-        return results
+        return res
 
     def save_entry(self, data):
         try:
             ws = "Datos a completar"
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-            updated = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
-            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=updated)
-            return (True, "OK")
-        except:
-            return (False, "Error al guardar. Verifica la pestaña 'Datos a completar'.")
-
-    def reset_system(self):
-        try:
-            self.save_state({"last_number":0, "last_reception":0, "year": datetime.now().year % 100})
-            ws = "Datos a completar"
-            df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-            empty = pd.DataFrame(columns=df.columns)
-            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=empty)
+            upd = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=upd)
             return True, "OK"
-        except: return False, "Error"
+        except Exception as e: return False, f"Error: {str(e)[:50]}"

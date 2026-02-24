@@ -4,3 +4,4 @@ openpyxl
 streamlit-searchbox
 datetime
 st-gsheets-connection
+requests
