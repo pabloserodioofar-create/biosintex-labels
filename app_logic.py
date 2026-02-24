@@ -2,79 +2,75 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
-import io
-import requests
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        # ID unico de tu documento
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
         self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
-    def _read_public_csv(self, sheet_name):
-        """Metodo alternativo: Lee el CSV publico directamente de Google si la conexion oficial falla"""
-        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/gviz/tq?tqx=out:csv&sheet={sheet_name.replace(' ', '%20')}"
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                return pd.read_csv(io.StringIO(response.text))
-        except: pass
-        return pd.DataFrame()
+    def _get_ws(self, base_name, env):
+        # Si es modo Pruebas, buscamos la pestaña con sufijo _Test
+        return base_name if env == "Producción" else f"{base_name}_Test"
 
-    def get_state(self):
+    def get_state(self, env="Producción"):
         try:
-            df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="State", ttl=0)
-            if df.empty: df = self._read_public_csv("State")
+            ws = self._get_ws("State", env)
+            df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             if not df.empty:
                 data = df.iloc[0].to_dict()
-                return {"last_number": int(data.get("last_number", 0)), "last_reception": int(data.get("last_reception", 0)), "year": int(data.get("year", 26))}
+                return {
+                    "last_number": int(data.get("last_number", 0)),
+                    "last_reception": int(data.get("last_reception", 0)),
+                    "year": int(data.get("year", 26))
+                }
         except: pass
         return {"last_number": 0, "last_reception": 0, "year": 26}
 
-    def save_state(self, state):
+    def save_state(self, state, env="Producción"):
         try:
+            ws = self._get_ws("State", env)
             df = pd.DataFrame([state])
-            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet="State", data=df)
+            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=df)
         except: pass
 
-    def generate_next_number(self):
-        s = self.get_state()
+    def generate_next_number(self, env="Producción"):
+        s = self.get_state(env)
         y = datetime.now().year % 100
         if int(s["year"]) != y: s["year"] = y; s["last_number"] = 1
         else: s["last_number"] += 1
-        self.save_state(s)
+        self.save_state(s, env)
         return f"{s['last_number']:04d}/{s['year']}"
 
-    def generate_next_reception(self):
-        s = self.get_state()
+    def generate_next_reception(self, env="Producción"):
+        s = self.get_state(env)
         s["last_reception"] += 1
-        self.save_state(s)
+        self.save_state(s, env)
         return str(s["last_reception"])
 
-    def get_excel_data(self):
+    def get_excel_data(self, env="Producción"):
         res = {}
-        # Leer SKU
-        df_s = self._read_public_csv("SKU")
-        if df_s.empty: 
-            try: df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
-            except: pass
-        if not df_s.empty: res['skus'] = df_s.to_dict('records')
-
-        # Leer Proveedores
-        df_p = self._read_public_csv("Proveedores")
-        if df_p.empty:
-            try: df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
-            except: pass
-        if not df_p.empty: res['providers'] = df_p.to_dict('records')
-        
+        # Cargamos siempre SKU y Proveedores de la base real (suelen ser compartidos)
+        # Pero si prefieres tener SKUs de prueba, puedes usar self._get_ws("SKU", env)
+        try:
+            df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=60)
+            res['skus'] = df_s.to_dict('records')
+            df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=60)
+            res['providers'] = df_p.to_dict('records')
+        except: pass
         return res
 
-    def save_entry(self, data):
+    def get_history(self, env="Producción"):
         try:
-            ws = "Datos a completar"
+            ws = self._get_ws("Datos a completar", env)
+            return self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
+        except: return pd.DataFrame()
+
+    def save_entry(self, data, env="Producción"):
+        try:
+            ws = self._get_ws("Datos a completar", env)
             df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             upd = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=upd)
             return True, "OK"
-        except Exception as e: return False, f"Error: {str(e)[:50]}"
+        except Exception as e: return False, str(e)
