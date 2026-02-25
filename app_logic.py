@@ -7,15 +7,13 @@ import io
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        # ID fijo del documento
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
         self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
-    def _direct_read(self, sheet_name):
-        """Lectura directa via CSV export con manejo de errores especifico"""
-        clean_name = sheet_name.replace(' ', '%20')
-        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={clean_name}"
+    def _get_ws_data(self, sheet_name):
+        """Lectura ultra-robusta via CSV con verificacion de contenido"""
+        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={sheet_name.replace(' ', '%20')}"
         try:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
@@ -27,17 +25,20 @@ class AnalysisManager:
     def get_excel_data(self):
         res = {"skus": [], "providers": [], "error": None}
         
-        # 1. Cargar SKU (Pestaña "SKU")
-        df_s = self._direct_read("SKU")
-        if not df_s.empty:
-            # Forzamos que los SKUs vengan de la pestaña SKU
-            res['skus'] = df_s.to_dict('records')
+        # 1. Cargar SKU
+        df_sku = self._get_ws_data("SKU")
+        if not df_sku.empty and ("Articulo" in df_sku.columns or "ID" in df_sku.columns):
+            res['skus'] = df_sku.to_dict('records')
         
-        # 2. Cargar Proveedores (Pestaña "Proveedores")
-        # Probamos variaciones pero ASEGURANDO que no sea la de SKU
-        for tab in ["Proveedores", "PROVEEDORES", "Proveedor"]:
-            df_p = self._direct_read(tab)
-            if not df_p.empty and "Articulo" not in df_p.columns: # Filtro de seguridad
+        # 2. Cargar Proveedores (Probando variaciones y validando contenido)
+        # Esto evita que Google nos devuelva el SKU por error
+        for tab in ["Proveedores", "PROVEEDORES", "Proveedor", "PROVEEDOR", "Proveedores "]:
+            df_p = self._get_ws_data(tab)
+            if not df_p.empty:
+                # VALIDACION: Si tiene 'Articulo', NO es la pestaña de proveedores
+                if "Articulo" in df_p.columns:
+                    continue 
+                # VALIDACION: Debe tener algo que parezca un proveedor o un ID
                 res['providers'] = df_p.to_dict('records')
                 break
             
@@ -45,7 +46,7 @@ class AnalysisManager:
 
     def get_state(self, env="Producción"):
         ws = "State" if env == "Producción" else "State_Test"
-        df = self._direct_read(ws)
+        df = self._get_ws_data(ws)
         if df.empty:
             try: df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             except: pass
@@ -79,7 +80,7 @@ class AnalysisManager:
 
     def get_history(self, env="Producción"):
         ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
-        df = self._direct_read(ws)
+        df = self._get_ws_data(ws)
         if df.empty:
             try: df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
             except: pass
