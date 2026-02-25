@@ -7,56 +7,71 @@ import io
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        # Extract ID from URL for fallback methods
+        # ID fijo para asegurar que no se pierda la conexion
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
         self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
-    def _get_ws(self, base, env):
-        return base if env == "Producción" else f"{base}_Test"
-
-    def _read_fallback(self, worksheet):
-        """Metodo de emergencia usando exportacion CSV directa de Google"""
-        url = f"{self.spreadsheet_url}/gviz/tq?tqx=out:csv&sheet={worksheet.replace(' ', '%20')}"
+    def _read_via_csv(self, worksheet_name):
+        """Metodo mas estable para leer Google Sheets publicos"""
+        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/gviz/tq?tqx=out:csv&sheet={worksheet_name.replace(' ', '%20')}"
         try:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
-                return pd.read_csv(io.StringIO(response.text))
-        except:
-            pass
+                # Si el CSV viene vacio o con error, pandas fallara aqui
+                df = pd.read_csv(io.StringIO(response.text))
+                # Limpiar columnas nulas
+                df = df.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                return df
+        except: pass
         return pd.DataFrame()
 
     def get_excel_data(self):
         res = {"skus": [], "providers": [], "error": None}
-        try:
-            # Intentar SKU
-            df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
-            if df_s.empty: df_s = self._read_fallback("SKU")
-            if not df_s.empty: res['skus'] = df_s.to_dict('records')
+        
+        # Intentamos leer SKU de la forma mas estable posible
+        df_s = self._read_via_csv("SKU")
+        if df_s.empty:
+            try: df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
+            except: pass
+        
+        if not df_s.empty:
+            res['skus'] = df_s.to_dict('records')
+        else:
+            res['error'] = "No se pudo leer la pestaña SKU (esta vacia o no se encuentra)"
 
-            # Intentar Proveedores
-            df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
-            if df_p.empty: df_p = self._read_fallback("Proveedores")
-            if not df_p.empty: res['providers'] = df_p.to_dict('records')
+        # Intentamos leer Proveedores
+        df_p = self._read_via_csv("Proveedores")
+        if df_p.empty:
+            try: df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
+            except: pass
             
-        except Exception as e:
-            res['error'] = str(e)
+        if not df_p.empty:
+            res['providers'] = df_p.to_dict('records')
+        
         return res
 
     def get_state(self, env="Producción"):
-        ws = self._get_ws("State", env)
-        try:
-            df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-            if df.empty: df = self._read_fallback(ws)
-            if not df.empty:
-                return df.iloc[0].to_dict()
-        except: pass
+        ws = "State" if env == "Producción" else "State_Test"
+        df = self._read_via_csv(ws)
+        if df.empty:
+            try: df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
+            except: pass
+            
+        if not df.empty:
+            data = df.iloc[0].to_dict()
+            return {
+                "last_number": int(data.get("last_number", 0)),
+                "last_reception": int(data.get("last_reception", 0)),
+                "year": int(data.get("year", 26))
+            }
         return {"last_number": 0, "last_reception": 0, "year": 26}
 
     def save_state(self, state, env="Producción"):
+        ws = "State" if env == "Producción" else "State_Test"
         try:
-            ws = self._get_ws("State", env)
-            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=pd.DataFrame([state]))
+            df = pd.DataFrame([state])
+            self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=df)
         except: pass
 
     def generate_next_number(self, env="Producción"):
@@ -76,18 +91,21 @@ class AnalysisManager:
         return str(val)
 
     def get_history(self, env="Producción"):
-        ws = self._get_ws("Datos a completar", env)
-        try:
-            df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
-            if df.empty: df = self._read_fallback(ws)
-            return df
-        except: return pd.DataFrame()
+        ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
+        df = self._read_via_csv(ws)
+        if df.empty:
+            try: df = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet=ws, ttl=0)
+            except: pass
+        return df
 
     def save_entry(self, data, env="Producción"):
+        ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
         try:
-            ws = self._get_ws("Datos a completar", env)
             df = self.get_history(env)
-            updated = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+            # Aseguramos que los nuevos datos coincidan en columnas
+            new_row = pd.DataFrame([data])
+            updated = pd.concat([df, new_row], ignore_index=True)
             self.conn.update(spreadsheet=self.spreadsheet_url, worksheet=ws, data=updated)
             return True, "OK"
-        except Exception as e: return False, str(e)
+        except Exception as e:
+            return False, str(e)
