@@ -4,10 +4,18 @@ from app_logic import AnalysisManager
 from streamlit_searchbox import st_searchbox
 from datetime import datetime
 
-# URL oficial
+# --- CONFIGURACION ---
+# REEMPLAZA ESTA URL con la que copiaste en el Paso 1 (Google Apps Script)
+# Debe terminar en /exec
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_ReAInpA5zTIdf_D5V6M-4qX4n6m9n6m9n6m9n6m9/exec" 
+
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
-st.set_page_config(page_title="Insumos Biosintex", layout="wide")
+st.set_page_config(page_title="Gestión Biosintex", layout="wide")
+
+# Mensaje de ayuda si no se cambio la URL
+if "/exec" not in SCRIPT_URL:
+    st.warning("⚠️ Falta configurar la URL de Apps Script en el código (app.py) para poder guardar datos.")
 
 # --- LOGIN ---
 if "password_correct" not in st.session_state:
@@ -26,20 +34,16 @@ if "password_correct" not in st.session_state:
 
 # --- INITIALIZATION ---
 if 'manager' not in st.session_state:
-    st.session_state.manager = AnalysisManager(SHEET_URL)
+    st.session_state.manager = AnalysisManager(SHEET_URL, SCRIPT_URL)
 if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 
 def refresh_data():
-    with st.spinner("Sincronizando con Google Sheets..."):
+    with st.spinner("Sincronizando proveedores..."):
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
-        
-        if data.get('errors'):
-            st.error("⚠️ Algunos datos no se pudieron cargar:")
-            for e in data['errors']: st.write(f"- {e}")
-            st.info("💡 Asegúrate de que el documento de Google esté COMPARTIDO como 'Cualquier persona con el enlace' (Rol EDITOR).")
+        if data.get('error'): st.warning(data['error'])
 
 if 'skus' not in st.session_state or not st.session_state.skus:
     refresh_data()
@@ -50,7 +54,7 @@ def search_sku(q):
     q = q.lower()
     res = []
     for s in st.session_state.skus:
-        art = str(s.get('Articulo', s.get('ID', s.get('SKU', ''))))
+        art = str(s.get('Articulo', s.get('ID', '')))
         nom = str(s.get('Nombre', ''))
         if q in art.lower() or q in nom.lower():
             res.append((f"{art} - {nom}", art))
@@ -61,10 +65,11 @@ def search_prov(q):
     q = q.lower()
     res = []
     for p in st.session_state.providers:
-        nom = str(p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', list(p.values())[0]))))
-        pid = str(p.get('ID', ''))
-        if q in nom.lower() or q in pid.lower():
-            res.append(nom)
+        # Buscamos en todas las propiedades para ID o nombre
+        text = " ".join([str(v) for v in p.values()]).lower()
+        if q in text:
+            nombre = p.get('Proveedor', p.get('PROVEEDOR', list(p.values())[0]))
+            res.append(str(nombre))
     return list(set(res))
 
 # --- UI ---
@@ -76,13 +81,9 @@ with st.sidebar:
     if env != st.session_state.env:
         st.session_state.env = env
         st.rerun()
-    st.button("🔄 Sincronizar Todo", on_click=refresh_data)
-    st.divider()
-    if st.button("🚪 Cerrar Sesión"):
-        del st.session_state["password_correct"]
-        st.rerun()
+    st.button("🔄 Sincronizar", on_click=refresh_data)
 
-tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Ver Historial"])
+tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
 
 with tab1:
     c1, c2 = st.columns(2)
@@ -92,7 +93,7 @@ with tab1:
         sku_desc = ""
         if sku:
             for s in st.session_state.skus:
-                if str(s.get('Articulo', s.get('ID', s.get('SKU', '')))) == str(sku):
+                if str(s.get('Articulo', s.get('ID',''))) == str(sku):
                     sku_desc = s.get('Nombre','')
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
         lote = st.text_input("Número de Lote *")
@@ -106,7 +107,7 @@ with tab1:
         bul = st.number_input("Bultos *", min_value=1, step=1)
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *")
-        st.text_input("Nº de Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
+        st.text_input("Nº Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
         sm1, sm2 = st.columns(2)
@@ -125,7 +126,14 @@ with tab1:
                 st.session_state.current_label = entry
                 st.session_state.show_label = True
                 st.rerun()
-            else: st.error(msg)
+            else: st.error(f"Error al guardar: {msg}")
+
+with tab2:
+    st.subheader(f"Historial {st.session_state.env}")
+    h_df = st.session_state.manager.get_history(env=st.session_state.env)
+    if not h_df.empty:
+        st.dataframe(h_df.iloc[::-1], use_container_width=True)
+    else: st.info("Sin registros.")
 
 if st.session_state.get('show_label'):
     d = st.session_state.current_label
