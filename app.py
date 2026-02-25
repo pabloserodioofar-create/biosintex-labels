@@ -4,10 +4,10 @@ from app_logic import AnalysisManager
 from streamlit_searchbox import st_searchbox
 from datetime import datetime
 
-# ID de documento verificado
+# URL oficial
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
-st.set_page_config(page_title="Recepción Biosintex", layout="wide")
+st.set_page_config(page_title="Sistema Biosintex", layout="wide")
 
 # --- LOGIN ---
 if "password_correct" not in st.session_state:
@@ -24,19 +24,19 @@ if "password_correct" not in st.session_state:
                 else: st.error("❌ Credenciales incorrectas")
     st.stop()
 
-# --- INIT ---
+# --- INITIALIZATION ---
 if 'manager' not in st.session_state:
     st.session_state.manager = AnalysisManager(SHEET_URL)
 if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 
 def refresh_data():
-    with st.spinner("Sincronizando proveedores..."):
+    with st.spinner("Sincronizando con Google Sheets..."):
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
-        if data.get('error') and not st.session_state.providers:
-            st.error(f"Error en proveedores: {data['error']}")
+        if not st.session_state.providers:
+            st.warning("⚠️ No se cargó la lista de Proveedores. Revisa que el nombre de la pestaña sea exactamente 'Proveedores'.")
 
 if 'skus' not in st.session_state or not st.session_state.skus:
     refresh_data()
@@ -45,22 +45,24 @@ if 'skus' not in st.session_state or not st.session_state.skus:
 def search_sku(q):
     if not q or not st.session_state.skus: return []
     q = q.lower()
-    return [(f"{str(s.get('Articulo',''))} - {str(s.get('Nombre',''))}", str(s.get('Articulo',''))) 
-            for s in st.session_state.skus if q in str(s).lower()]
+    res = []
+    for s in st.session_state.skus:
+        art = str(s.get('Articulo', s.get('ID', '')))
+        nom = str(s.get('Nombre', ''))
+        if q in art.lower() or q in nom.lower():
+            res.append((f"{art} - {nom}", art))
+    return res[:30]
 
 def search_prov(q):
     if not q or not st.session_state.providers: return []
     q = q.lower()
     res = []
     for p in st.session_state.providers:
-        # Buscamos en todas las posibles columnas: ID, Proveedor, Nombre
-        entero = " ".join([str(v) for v in p.values()]).lower()
-        if q in entero:
-            # Mostramos el valor de la columna 'Proveedor' o la que tenga texto
-            nombre = p.get('Proveedor', p.get('nombre', p.get('PROVEEDOR', '')))
-            if not nombre: # Si no tiene nombre de columna, sacamos el segundo valor
-                nombre = list(p.values())[1] if len(p.values()) > 1 else list(p.values())[0]
-            res.append(str(nombre))
+        # Buscamos especificamente en columnas que NO sean de SKU
+        p_name = str(p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', ''))))
+        p_id = str(p.get('ID', p.get('id', '')))
+        if q in p_name.lower() or q in p_id.lower():
+            res.append(p_name)
     return list(set(res))
 
 # --- UI ---
@@ -80,11 +82,11 @@ with tab1:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Insumo")
-        sku = st_searchbox(search_sku, label="Buscar Insumo *", key="sku_in")
+        sku = st_searchbox(search_sku, label="Buscar SKU *", key="sku_in")
         sku_desc = ""
         if sku:
             for s in st.session_state.skus:
-                if str(s.get('Articulo','')) == str(sku):
+                if str(s.get('Articulo', s.get('ID',''))) == str(sku):
                     sku_desc = s.get('Nombre','')
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
         lote = st.text_input("Número de Lote *")
@@ -96,7 +98,7 @@ with tab1:
         udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"])
         cant = st.number_input("Cantidad Total *", min_value=0.0)
         bul = st.number_input("Bultos *", min_value=1, step=1)
-        prov = st_searchbox(search_prov, label="Proveedor (Nombre o ID) *", key="prov_in")
+        prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *")
         
         st.text_input("Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)

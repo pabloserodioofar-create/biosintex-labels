@@ -7,13 +7,13 @@ import io
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
+        # ID fijo del documento
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
         self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
     def _direct_read(self, sheet_name):
-        """Lectura directa via CSV export (muy robusta)"""
-        # Limpiamos el nombre de la hoja para la URL
+        """Lectura directa via CSV export con manejo de errores especifico"""
         clean_name = sheet_name.replace(' ', '%20')
         url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={clean_name}"
         try:
@@ -27,23 +27,19 @@ class AnalysisManager:
     def get_excel_data(self):
         res = {"skus": [], "providers": [], "error": None}
         
-        # 1. Intentamos SKU
+        # 1. Cargar SKU (Pestaña "SKU")
         df_s = self._direct_read("SKU")
-        if df_s.empty: df_s = self._direct_read("skus")
         if not df_s.empty:
+            # Forzamos que los SKUs vengan de la pestaña SKU
             res['skus'] = df_s.to_dict('records')
         
-        # 2. Intentamos Proveedores (con variaciones por si acaso)
-        tab_names = ["Proveedores", "PROVEEDORES", "Proveedor", "PROVEEDOR"]
-        df_p = pd.DataFrame()
-        for tab in tab_names:
+        # 2. Cargar Proveedores (Pestaña "Proveedores")
+        # Probamos variaciones pero ASEGURANDO que no sea la de SKU
+        for tab in ["Proveedores", "PROVEEDORES", "Proveedor"]:
             df_p = self._direct_read(tab)
-            if not df_p.empty: break
-            
-        if not df_p.empty:
-            res['providers'] = df_p.to_dict('records')
-        else:
-            res['error'] = "No se encontro la pestaña de Proveedores. Revisa el nombre en el Excel."
+            if not df_p.empty and "Articulo" not in df_p.columns: # Filtro de seguridad
+                res['providers'] = df_p.to_dict('records')
+                break
             
         return res
 
