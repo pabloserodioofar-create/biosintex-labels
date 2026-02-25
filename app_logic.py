@@ -7,10 +7,9 @@ import io
 class AnalysisManager:
     def __init__(self, spreadsheet_url, script_url=None):
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
-        self.script_url = script_url # URL de Apps Script para ESCRIBIR
+        self.script_url = script_url
         
     def _read_via_csv(self, sheet_name):
-        """Lectura ultra-robusta via CSV (Sigue funcionando para leer)"""
         url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={sheet_name.replace(' ', '%20')}"
         try:
             response = requests.get(url, timeout=10)
@@ -22,12 +21,23 @@ class AnalysisManager:
 
     def get_excel_data(self):
         res = {"skus": [], "providers": [], "error": None}
-        df_s = self._read_via_csv("SKU")
-        if not df_s.empty: res['skus'] = df_s.to_dict('records')
         
-        df_p = self._read_via_csv("Proveedores")
-        if not df_p.empty: res['providers'] = df_p.to_dict('records')
-        else: res['error'] = "No se cargó lista de proveedores."
+        # 1. SKU (Segura)
+        df_s = self._read_via_csv("SKU")
+        if not df_s.empty:
+            res['skus'] = df_s.to_dict('records')
+        
+        # 2. PROVEEDORES (Con filtro de seguridad anti-SKU)
+        # Probamos variantes, pero solo aceptamos si NO tiene la columna 'Articulo'
+        for tab in ["Proveedores", "PROVEEDORES", "Proveedor"]:
+            df_p = self._read_via_csv(tab)
+            if not df_p.empty and "Articulo" not in df_p.columns:
+                res['providers'] = df_p.to_dict('records')
+                break
+        
+        if not res['providers']:
+            res['error'] = "⚠️ No se encontró la pestaña 'Proveedores' o los datos están mezclados."
+            
         return res
 
     def get_state(self, env="Producción"):
@@ -39,47 +49,31 @@ class AnalysisManager:
         return {"last_number": 0, "last_reception": 0, "year": 26}
 
     def save_state(self, state, env="Producción"):
-        if not self.script_url: return
+        if not self.script_url or "/exec" not in self.script_url: return
         ws = "State" if env == "Producción" else "State_Test"
         try:
-            # Usamos el puente Apps Script para guardar
-            payload = {
-                "action": "update_state",
-                "sheet": ws,
-                "last_number": int(state['last_number']),
-                "last_reception": int(state['last_reception']),
-                "year": int(state.get('year', 26))
-            }
-            requests.post(self.script_url, json=payload)
+            payload = {"action": "update_state", "sheet": ws, "last_number": int(state['last_number']), "last_reception": int(state['last_reception']), "year": int(state.get('year', 26))}
+            requests.post(self.script_url, json=payload, timeout=10)
         except: pass
 
     def save_entry(self, data, env="Producción"):
-        if not self.script_url:
-            return False, "Error: No se ha configurado la URL de escritura (Apps Script)."
+        if not self.script_url or "/exec" not in self.script_url:
+            return False, "⚠️ Configuración incompleta: Pega la URL de Apps Script en app.py"
         
         ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
         try:
-            # Convertimos el diccionario en una lista ordenada segun columnas del Excel
-            # (Asumimos el orden estandar que veniamos usando)
             row_data = [
-                data.get('Fecha'), data.get('SKU'), data.get('Descripción de Producto'),
-                data.get('Número de Análisis'), data.get('Lote'), data.get('Vto'),
-                data.get('Cantidad'), data.get('UDM'), data.get('Cantidad Bultos'),
-                data.get('Proveedor'), data.get('Número de Remito'), data.get('recepcion_num'),
-                data.get('realizado_por'), data.get('controlado_por')
+                str(data.get('Fecha', '')), str(data.get('SKU', '')), str(data.get('Descripción de Producto', '')),
+                str(data.get('Número de Análisis', '')), str(data.get('Lote', '')), str(data.get('Vto', '')),
+                str(data.get('Cantidad', '')), str(data.get('UDM', '')), str(data.get('Cantidad Bultos', '')),
+                str(data.get('Proveedor', '')), str(data.get('Número de Remito', '')), str(data.get('recepcion_num', '')),
+                str(data.get('realizado_por', '')), str(data.get('controlado_por', ''))
             ]
-            
-            payload = {
-                "action": "append",
-                "sheet": ws,
-                "row": row_data
-            }
-            resp = requests.post(self.script_url, json=payload)
-            if resp.status_code == 200:
-                return True, "OK"
-            return False, f"Error del servidor: {resp.status_code}"
-        except Exception as e:
-            return False, str(e)
+            payload = {"action": "append", "sheet": ws, "row": row_data}
+            resp = requests.post(self.script_url, json=payload, timeout=15)
+            if resp.status_code == 200: return True, "OK"
+            return False, f"Server Error {resp.status_code} (Revisa la URL de Apps Script)"
+        except Exception as e: return False, f"Error: {str(e)}"
 
     def generate_next_number(self, env="Producción"):
         s = self.get_state(env)
