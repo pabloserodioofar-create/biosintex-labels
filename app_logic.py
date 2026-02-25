@@ -7,14 +7,15 @@ import io
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url):
-        # ID Extraido de tu link original
         self.doc_id = "1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
         self.spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}"
         self.conn = st.connection("gsheets", type=GSheetsConnection)
 
     def _direct_read(self, sheet_name):
-        """Lee la hoja usando el motor de exportacion CSV de Google (Mas robusto que el API oficial para lectura)"""
-        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={sheet_name}"
+        """Lectura directa via CSV export (muy robusta)"""
+        # Limpiamos el nombre de la hoja para la URL
+        clean_name = sheet_name.replace(' ', '%20')
+        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=csv&sheet={clean_name}"
         try:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
@@ -26,24 +27,23 @@ class AnalysisManager:
     def get_excel_data(self):
         res = {"skus": [], "providers": [], "error": None}
         
-        # Intentamos SKU
+        # 1. Intentamos SKU
         df_s = self._direct_read("SKU")
-        if df_s.empty:
-            try: df_s = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="SKU", ttl=0)
-            except Exception as e: res['error'] = f"Pestaña SKU no encontrada. {str(e)[:50]}"
-        
+        if df_s.empty: df_s = self._direct_read("skus")
         if not df_s.empty:
             res['skus'] = df_s.to_dict('records')
         
-        # Intentamos Proveedores
-        df_p = self._direct_read("Proveedores")
-        if df_p.empty:
-            try: df_p = self.conn.read(spreadsheet=self.spreadsheet_url, worksheet="Proveedores", ttl=0)
-            except Exception as e: 
-                if not res['error']: res['error'] = f"Pestaña Proveedores no encontrada."
-
+        # 2. Intentamos Proveedores (con variaciones por si acaso)
+        tab_names = ["Proveedores", "PROVEEDORES", "Proveedor", "PROVEEDOR"]
+        df_p = pd.DataFrame()
+        for tab in tab_names:
+            df_p = self._direct_read(tab)
+            if not df_p.empty: break
+            
         if not df_p.empty:
             res['providers'] = df_p.to_dict('records')
+        else:
+            res['error'] = "No se encontro la pestaña de Proveedores. Revisa el nombre en el Excel."
             
         return res
 

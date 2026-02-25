@@ -9,7 +9,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgY
 
 st.set_page_config(page_title="Recepción Biosintex", layout="wide")
 
-# --- LOGIN (CORREGIDO PARA EVITAR MISSING SUBMIT BUTTON) ---
+# --- LOGIN ---
 if "password_correct" not in st.session_state:
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Reservado Biosintex</h2>", unsafe_allow_html=True)
     _, col, _ = st.columns([1,1.5,1])
@@ -17,13 +17,11 @@ if "password_correct" not in st.session_state:
         with st.form("Login"):
             u = st.text_input("Usuario")
             p = st.text_input("Contraseña", type="password")
-            submitted = st.form_submit_button("Entrar")
-            if submitted:
+            if st.form_submit_button("Entrar"):
                 if u == "biosintex" and p == "2026":
                     st.session_state["password_correct"] = True
                     st.rerun()
-                else:
-                    st.error("❌ Credenciales incorrectas")
+                else: st.error("❌ Credenciales incorrectas")
     st.stop()
 
 # --- INIT ---
@@ -33,14 +31,14 @@ if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 
 def refresh_data():
-    with st.spinner("Sincronizando con Google Sheets..."):
+    with st.spinner("Sincronizando proveedores..."):
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
-        if data.get('error'):
-            st.error(f"Error de conexión: {data['error']}")
+        if data.get('error') and not st.session_state.providers:
+            st.error(f"Error en proveedores: {data['error']}")
 
-if 'skus' not in st.session_state:
+if 'skus' not in st.session_state or not st.session_state.skus:
     refresh_data()
 
 # --- BUSQUEDA ---
@@ -53,7 +51,17 @@ def search_sku(q):
 def search_prov(q):
     if not q or not st.session_state.providers: return []
     q = q.lower()
-    return [str(p.get('Proveedor','')) for p in st.session_state.providers if q in str(p).lower()]
+    res = []
+    for p in st.session_state.providers:
+        # Buscamos en todas las posibles columnas: ID, Proveedor, Nombre
+        entero = " ".join([str(v) for v in p.values()]).lower()
+        if q in entero:
+            # Mostramos el valor de la columna 'Proveedor' o la que tenga texto
+            nombre = p.get('Proveedor', p.get('nombre', p.get('PROVEEDOR', '')))
+            if not nombre: # Si no tiene nombre de columna, sacamos el segundo valor
+                nombre = list(p.values())[1] if len(p.values()) > 1 else list(p.values())[0]
+            res.append(str(nombre))
+    return list(set(res))
 
 # --- UI ---
 st.title(f"📦 Recepción de Insumos ({st.session_state.env})")
@@ -65,10 +73,6 @@ with st.sidebar:
         st.session_state.env = env
         st.rerun()
     st.button("🔄 Sincronizar Todo", on_click=refresh_data)
-    st.divider()
-    if st.button("🚪 Cerrar Sesión"):
-        del st.session_state["password_correct"]
-        st.rerun()
 
 tab1, tab2 = st.tabs(["📝 Registro", "📊 Historial"])
 
@@ -76,7 +80,7 @@ with tab1:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Insumo")
-        sku = st_searchbox(search_sku, label="Buscar Insumo *", key="sku_input")
+        sku = st_searchbox(search_sku, label="Buscar Insumo *", key="sku_in")
         sku_desc = ""
         if sku:
             for s in st.session_state.skus:
@@ -92,8 +96,9 @@ with tab1:
         udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"])
         cant = st.number_input("Cantidad Total *", min_value=0.0)
         bul = st.number_input("Bultos *", min_value=1, step=1)
-        prov = st_searchbox(search_prov, label="Proveedor *", key="prov_input")
+        prov = st_searchbox(search_prov, label="Proveedor (Nombre o ID) *", key="prov_in")
         rem = st.text_input("Nº Remito *")
+        
         st.text_input("Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
@@ -102,28 +107,12 @@ with tab1:
         with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff)
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
-        if not sku or not lote or not prov or real=="Seleccione..." or cont=="Seleccione...":
-            st.error("⚠️ Faltan campos obligatorios.")
+        if not sku or not lote or not prov or real=="Seleccione...":
+            st.error("⚠️ Faltan datos obligatorios.")
         else:
             an = st.session_state.manager.generate_next_number(env=st.session_state.env)
             rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
-            entry = {
-                'Fecha': datetime.now().strftime("%d/%m/%Y"), 
-                'SKU': sku, 
-                'Descripción de Producto': sku_desc, 
-                'Número de Análisis': an, 
-                'Lote': lote, 
-                'Vto': vto.strftime("%d/%m/%Y"), 
-                'Cantidad': cant, 
-                'UDM': udm, 
-                'Cantidad Bultos': bul, 
-                'Proveedor': prov, 
-                'Número de Remito': rem, 
-                'recepcion_num': int(rc),
-                'realizado_por': real,
-                'controlado_por': cont,
-                'Entorno': st.session_state.env
-            }
+            entry = {'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 'Número de Análisis': an, 'Lote': lote, 'Vto': vto.strftime("%d/%m/%Y"), 'Cantidad': cant, 'UDM': udm, 'Cantidad Bultos': bul, 'Proveedor': prov, 'Número de Remito': rem, 'recepcion_num': int(rc), 'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env}
             ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
             if ok:
                 st.session_state.current_label = entry
