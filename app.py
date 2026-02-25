@@ -9,15 +9,21 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgY
 
 st.set_page_config(page_title="Recepción Biosintex", layout="wide")
 
-# --- LOGIN ---
+# --- LOGIN (CORREGIDO PARA EVITAR MISSING SUBMIT BUTTON) ---
 if "password_correct" not in st.session_state:
-    st.markdown("<h2 style='text-align: center;'>🔐 Acceso Reservado</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>🔐 Acceso Reservado Biosintex</h2>", unsafe_allow_html=True)
     _, col, _ = st.columns([1,1.5,1])
     with col:
         with st.form("Login"):
-            if st.text_input("Usuario") == "biosintex" and st.text_input("Contraseña", type="password") == "2026" and st.form_submit_button("Entrar"):
-                st.session_state["password_correct"] = True
-                st.rerun()
+            u = st.text_input("Usuario")
+            p = st.text_input("Contraseña", type="password")
+            submitted = st.form_submit_button("Entrar")
+            if submitted:
+                if u == "biosintex" and p == "2026":
+                    st.session_state["password_correct"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ Credenciales incorrectas")
     st.stop()
 
 # --- INIT ---
@@ -27,13 +33,12 @@ if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 
 def refresh_data():
-    with st.spinner("Sincronizando..."):
+    with st.spinner("Sincronizando con Google Sheets..."):
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
         if data.get('error'):
             st.error(f"Error de conexión: {data['error']}")
-            st.info("💡 Por favor, verifica que la hoja de Google esté compartida como 'Cualquier persona con el enlace' (ROL EDITOR).")
 
 if 'skus' not in st.session_state:
     refresh_data()
@@ -59,7 +64,11 @@ with st.sidebar:
     if env != st.session_state.env:
         st.session_state.env = env
         st.rerun()
-    st.button("🔄 Sincronizar", on_click=refresh_data)
+    st.button("🔄 Sincronizar Todo", on_click=refresh_data)
+    st.divider()
+    if st.button("🚪 Cerrar Sesión"):
+        del st.session_state["password_correct"]
+        st.rerun()
 
 tab1, tab2 = st.tabs(["📝 Registro", "📊 Historial"])
 
@@ -68,10 +77,12 @@ with tab1:
     with c1:
         st.subheader("Insumo")
         sku = st_searchbox(search_sku, label="Buscar Insumo *", key="sku_input")
+        sku_desc = ""
         if sku:
             for s in st.session_state.skus:
                 if str(s.get('Articulo','')) == str(sku):
-                    st.info(f"✅ PRODUCTO: {s.get('Nombre','')}"); break
+                    sku_desc = s.get('Nombre','')
+                    st.info(f"✅ PRODUCTO: {sku_desc}"); break
         lote = st.text_input("Número de Lote *")
         vto = st.date_input("Vencimiento *")
         pres = st.selectbox("Presentación *", ["CAJAS", "BOLSA BLANCA", "BOLSA KRAFT", "TAMBOR", "BIDON", "OTROS"])
@@ -84,13 +95,35 @@ with tab1:
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_input")
         rem = st.text_input("Nº Remito *")
         st.text_input("Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
+        
+        staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
+        sm1, sm2 = st.columns(2)
+        with sm1: real = st.selectbox("Realizado por *", ["Seleccione..."] + staff)
+        with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff)
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
-        if not sku or not lote or not prov: st.error("Faltan campos obligatorios")
+        if not sku or not lote or not prov or real=="Seleccione..." or cont=="Seleccione...":
+            st.error("⚠️ Faltan campos obligatorios.")
         else:
             an = st.session_state.manager.generate_next_number(env=st.session_state.env)
             rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
-            entry = {'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': '', 'Número de Análisis': an, 'Lote': lote, 'Vto': vto.strftime("%d/%m/%Y"), 'Cantidad': cant, 'UDM': udm, 'Cantidad Bultos': bul, 'Proveedor': prov, 'Número de Remito': rem, 'recepcion_num': rc, 'Entorno': st.session_state.env}
+            entry = {
+                'Fecha': datetime.now().strftime("%d/%m/%Y"), 
+                'SKU': sku, 
+                'Descripción de Producto': sku_desc, 
+                'Número de Análisis': an, 
+                'Lote': lote, 
+                'Vto': vto.strftime("%d/%m/%Y"), 
+                'Cantidad': cant, 
+                'UDM': udm, 
+                'Cantidad Bultos': bul, 
+                'Proveedor': prov, 
+                'Número de Remito': rem, 
+                'recepcion_num': int(rc),
+                'realizado_por': real,
+                'controlado_por': cont,
+                'Entorno': st.session_state.env
+            }
             ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
             if ok:
                 st.session_state.current_label = entry
@@ -104,6 +137,7 @@ if st.session_state.get('show_label'):
     if st.button("❌ Cerrar"): st.session_state.show_label = False; st.rerun()
     html = f"""<div style="border:5px solid black; padding:20px; background:white; color:black; font-family:Arial; text-align:center; width:350px; margin:auto;">
         <h1 style="font-size:50px; margin:0;">{d['Número de Análisis']}</h1><hr>
+        <p><b>{d.get('Descripción de Producto', 'INSUMO')}</b></p>
         <p>SKU: {d['SKU']} | Lote: {d['Lote']}</p>
         <div style="background:red; color:white; font-size:40px; font-weight:bold; padding:20px; border:2px solid black;">CUARENTENA</div>
         <button onclick="window.print()" style="margin-top:20px; padding:15px; width:100%; background:green; color:white; font-weight:bold; cursor:pointer;">🖨️ IMPRIMIR</button>
