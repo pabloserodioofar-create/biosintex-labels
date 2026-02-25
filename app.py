@@ -7,7 +7,7 @@ from datetime import datetime
 # URL oficial
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
-st.set_page_config(page_title="Gestión Biosintex", layout="wide")
+st.set_page_config(page_title="Insumos Biosintex", layout="wide")
 
 # --- LOGIN ---
 if "password_correct" not in st.session_state:
@@ -31,13 +31,15 @@ if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 
 def refresh_data():
-    with st.spinner("Buscando proveedores en Google Sheets..."):
+    with st.spinner("Sincronizando con Google Sheets..."):
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
         
-        if not st.session_state.providers:
-            st.warning("⚠️ Todavía no encuentro la pestaña 'Proveedores'. Revisa que se llame EXACTAMENTE así (sin espacios al inicio ni puntos).")
+        if data.get('errors'):
+            st.error("⚠️ Algunos datos no se pudieron cargar:")
+            for e in data['errors']: st.write(f"- {e}")
+            st.info("💡 Asegúrate de que el documento de Google esté COMPARTIDO como 'Cualquier persona con el enlace' (Rol EDITOR).")
 
 if 'skus' not in st.session_state or not st.session_state.skus:
     refresh_data()
@@ -48,7 +50,7 @@ def search_sku(q):
     q = q.lower()
     res = []
     for s in st.session_state.skus:
-        art = str(s.get('Articulo', s.get('ID', '')))
+        art = str(s.get('Articulo', s.get('ID', s.get('SKU', ''))))
         nom = str(s.get('Nombre', ''))
         if q in art.lower() or q in nom.lower():
             res.append((f"{art} - {nom}", art))
@@ -59,16 +61,14 @@ def search_prov(q):
     q = q.lower()
     res = []
     for p in st.session_state.providers:
-        # Buscamos en todas las columnas pero mostramos la que tiene el nombre
-        vals = [str(v).lower() for v in p.values()]
-        if any(q in v for v in vals):
-            # Prioridad de columnas para mostrar el nombre
-            nombre = p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', list(p.values())[0])))
-            res.append(str(nombre))
+        nom = str(p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', list(p.values())[0]))))
+        pid = str(p.get('ID', ''))
+        if q in nom.lower() or q in pid.lower():
+            res.append(nom)
     return list(set(res))
 
 # --- UI ---
-st.title(f"📦 Recepción de Insumos ({st.session_state.env})")
+st.title(f"📦 Recepción de Insumos Biosintex ({st.session_state.env})")
 
 with st.sidebar:
     st.header("⚙️ Ajustes")
@@ -77,18 +77,22 @@ with st.sidebar:
         st.session_state.env = env
         st.rerun()
     st.button("🔄 Sincronizar Todo", on_click=refresh_data)
+    st.divider()
+    if st.button("🚪 Cerrar Sesión"):
+        del st.session_state["password_correct"]
+        st.rerun()
 
-tab1, tab2 = st.tabs(["📝 Registro", "📊 Historial"])
+tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Ver Historial"])
 
 with tab1:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Insumo")
-        sku = st_searchbox(search_sku, label="Buscar SKU *", key="sku_input")
+        sku = st_searchbox(search_sku, label="Buscar SKU *", key="sku_in")
         sku_desc = ""
         if sku:
             for s in st.session_state.skus:
-                if str(s.get('Articulo', s.get('ID',''))) == str(sku):
+                if str(s.get('Articulo', s.get('ID', s.get('SKU', '')))) == str(sku):
                     sku_desc = s.get('Nombre','')
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
         lote = st.text_input("Número de Lote *")
@@ -100,9 +104,9 @@ with tab1:
         udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"])
         cant = st.number_input("Cantidad Total *", min_value=0.0)
         bul = st.number_input("Bultos *", min_value=1, step=1)
-        prov = st_searchbox(search_prov, label="Proveedor *", key="prov_input")
+        prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *")
-        st.text_input("Nº Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
+        st.text_input("Nº de Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
         sm1, sm2 = st.columns(2)
