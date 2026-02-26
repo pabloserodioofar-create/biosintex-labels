@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- CONFIGURACION MUY IMPORTANTE ---
 # 1. PEGA AQUÍ TU URL DE APPS SCRIPT (la que termina en /exec)
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycb..." # <-- CAMBIA ESTO!
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwlWb92Vha5hLW8WXubnRAc7NR953147fotL8uwqSTL7uiru-RRwq-QtJEHM0GnY6nWBg/exec"
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
