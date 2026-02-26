@@ -177,11 +177,120 @@ if st.session_state.get('show_label'):
     d = st.session_state.current_label
     st.divider()
     if st.button("❌ Cerrar"): st.session_state.show_label = False; st.rerun()
-    html = f"""<div style="border:5px solid black; padding:20px; background:white; color:black; font-family:Arial; text-align:center; width:350px; margin:auto;">
-        <h1 style="font-size:50px; margin:0;">{d['Número de Análisis']}</h1><hr>
-        <p><b>{d.get('Descripción de Producto', 'INSUMO')}</b></p>
-        <p>SKU: {d['SKU']} | Lote: {d['Lote']}</p>
-        <div style="background:red; color:white; font-size:40px; font-weight:bold; padding:20px; border:2px solid black;">CUARENTENA</div>
-        <button onclick="window.print()" style="margin-top:20px; padding:15px; width:100%; background:green; color:white; font-weight:bold; cursor:pointer;">🖨️ IMPRIMIR</button>
-    </div>"""
-    st.components.v1.html(html, height=500)
+    
+    # Diseño de Rótulo 10x10 cm aproximado para impresión
+    html = f"""
+    <style>
+        @media print {{
+            .no-print {{ display: none !important; }}
+            @page {{ size: 100mm 100mm; margin: 0; }}
+            body {{ margin: 0; }}
+        }}
+        .label-container {{
+            width: 380px;
+            height: 380px;
+            border: 2px solid black;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            margin: auto;
+            background: white;
+            color: black;
+            display: flex;
+            flex-direction: column;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            height: 100%;
+        }}
+        td {{
+            border: 1px solid black;
+            padding: 3px;
+            text-align: center;
+            vertical-align: middle;
+        }}
+        .label-text {{ font-weight: bold; text-transform: uppercase; }}
+        .header-val {{ font-size: 24px; font-weight: bold; }}
+        .cuarentena {{
+            background: white;
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }}
+        .field-name {{ width: 30%; text-align: left; background: #f0f0f0; font-weight: bold; font-size: 10px; }}
+        .logo-box {{ width: 30%; }}
+        .small-text {{ font-size: 9px; }}
+    </style>
+    <div class="label-container" id="printable-label">
+        <table>
+            <tr>
+                <td class="field-name">Nº de Análisis</td>
+                <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
+                <td class="logo-box"><b style="color:#0056b3;">Biosintex</b><br><small>Hacer las cosas bien</small></td>
+            </tr>
+            <tr>
+                <td class="field-name">Insumo / Producto</td>
+                <td colspan="3" class="label-text">{d.get('Descripción de Producto', '')}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Presentación</td>
+                <td colspan="3" class="label-text">{d.get('Presentacion', '')}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Fecha</td>
+                <td colspan="3">{d['Fecha']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Nº de lote</td>
+                <td>{d['Lote']}</td>
+                <td class="field-name">Vto.:</td>
+                <td>{d['Vto']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Código interno</td>
+                <td colspan="3" class="label-text">{d['SKU']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Origen</td>
+                <td colspan="3" class="label-text">{d.get('Origen', '')}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Proveedor</td>
+                <td colspan="3" class="label-text">{d['Proveedor']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Bulto Nº</td>
+                <td style="background:#ddd;">1</td>
+                <td class="field-name">de</td>
+                <td style="background:#ddd;">{d['Cantidad Bultos']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Cantidad por bulto</td>
+                <td>{d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0:.2f} {d['UDM']}</td>
+                <td class="field-name">Total</td>
+                <td>{d['Cantidad']} {d['UDM']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Nº de Remito</td>
+                <td class="small-text">{d['Número de Remito']}</td>
+                <td class="field-name">Nº de recepción</td>
+                <td>{d['recepcion_num']}</td>
+            </tr>
+            <tr>
+                <td class="field-name">Realizado por</td>
+                <td class="label-text">{ "".join([w[0] for w in d['realizado_por'].split()]) if d['realizado_por'] != "Seleccione..." else "" }</td>
+                <td class="field-name">Controlado por</td>
+                <td class="label-text">{ "".join([w[0] for w in d['controlado_por'].split()]) if d['controlado_por'] != "Seleccione..." else "" }</td>
+            </tr>
+            <tr>
+                <td class="small-text">CC-352-SOP Vigente</td>
+                <td colspan="3" class="cuarentena">CUARENTENA</td>
+            </tr>
+        </table>
+    </div>
+    <div class="no-print" style="text-align:center; margin-top:20px;">
+        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR RÓTULO (10x10)</button>
+        <p style="color:gray; font-size:12px; margin-top:5px;">Asegúrate de configurar el tamaño de papel a 10x10 cm en el diálogo de impresión.</p>
+    </div>
+    """
+    st.components.v1.html(html, height=600)
