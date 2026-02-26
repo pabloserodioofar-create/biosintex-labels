@@ -178,6 +178,15 @@ if st.session_state.get('show_label'):
     st.divider()
     if st.button("❌ Cerrar"): st.session_state.show_label = False; st.rerun()
     
+    # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
+    c_p1, c_p2 = st.columns(2)
+    with c_p1:
+        bulto_n = st.number_input("Imprimir Bulto Nº", min_value=1, max_value=d['Cantidad Bultos'], value=1)
+    with c_p2:
+        # Sugerir cantidad normal, pero permitir editar por bulto parcial
+        cant_sugerida = d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0
+        cant_bulto = st.number_input("Cantidad para este bulto", value=float(cant_sugerida), step=0.01)
+
     # Diseño de Rótulo 10x10 cm aproximado para impresión
     html = f"""
     <style>
@@ -226,7 +235,7 @@ if st.session_state.get('show_label'):
             <tr>
                 <td class="field-name">Nº de Análisis</td>
                 <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
-                <td class="logo-box"><b style="color:#0056b3;">Biosintex</b><br><small>Hacer las cosas bien</small></td>
+                <td class="logo-box"><b style="color:#0056b3; font-size:16px;">Biosintex</b></td>
             </tr>
             <tr>
                 <td class="field-name">Insumo / Producto</td>
@@ -260,13 +269,13 @@ if st.session_state.get('show_label'):
             </tr>
             <tr>
                 <td class="field-name">Bulto Nº</td>
-                <td style="background:#ddd;">1</td>
+                <td style="background:#ddd; font-weight:bold;">{bulto_n}</td>
                 <td class="field-name">de</td>
-                <td style="background:#ddd;">{d['Cantidad Bultos']}</td>
+                <td style="background:#ddd; font-weight:bold;">{d['Cantidad Bultos']}</td>
             </tr>
             <tr>
                 <td class="field-name">Cantidad por bulto</td>
-                <td>{d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0:.2f} {d['UDM']}</td>
+                <td style="font-weight:bold;">{cant_bulto:.2f} {d['UDM']}</td>
                 <td class="field-name">Total</td>
                 <td>{d['Cantidad']} {d['UDM']}</td>
             </tr>
@@ -278,19 +287,19 @@ if st.session_state.get('show_label'):
             </tr>
             <tr>
                 <td class="field-name">Realizado por</td>
-                <td class="label-text">{ "".join([w[0] for w in d['realizado_por'].split()]) if d['realizado_por'] != "Seleccione..." else "" }</td>
+                <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
                 <td class="field-name">Controlado por</td>
-                <td class="label-text">{ "".join([w[0] for w in d['controlado_por'].split()]) if d['controlado_por'] != "Seleccione..." else "" }</td>
+                <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
             </tr>
             <tr>
-                <td class="small-text">CC-352-SOP Vigente</td>
+                <td class="small-text">DP-003-SOP Vigente</td>
                 <td colspan="3" class="cuarentena">CUARENTENA</td>
             </tr>
         </table>
     </div>
     <div class="no-print" style="text-align:center; margin-top:20px;">
-        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR RÓTULO (10x10)</button>
-        <p style="color:gray; font-size:12px; margin-top:5px;">Asegúrate de configurar el tamaño de papel a 10x10 cm en el diálogo de impresión.</p>
+        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR ESTE RÓTULO</button>
+        <p style="color:gray; font-size:12px; margin-top:5px;">Configura el bulto y cantidad arriba antes de imprimir.</p>
     </div>
     """
-    st.components.v1.html(html, height=600)
+    st.components.v1.html(html, height=650)
