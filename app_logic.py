@@ -31,24 +31,31 @@ class AnalysisManager:
             res['error'] = "⚠️ No se pudo sincronizar con Google Sheets. Revisa tu conexión."
             return res
         
-        # 1. SKU
-        if "SKU" in self.cached_xl.sheet_names:
-            df_s = self.cached_xl.parse("SKU")
-            res['skus'] = df_s.dropna(how='all').to_dict('records')
+        # 1. SKU (Búsqueda flexible por nombre)
+        sku_tab = next((s for s in self.cached_xl.sheet_names if "SKU" in s.upper()), None)
+        if sku_tab:
+            df_s = self.cached_xl.parse(sku_tab)
+            res['skus'] = df_s.dropna(how='all', subset=df_s.columns[:2]).to_dict('records')
         
-        # 2. PROVEEDORES
-        found_p = False
-        for tab in ["Proveedores", "PROVEEDORES", "Proveedor"]:
-            if tab in self.cached_xl.sheet_names:
-                df_p = self.cached_xl.parse(tab)
-                # Validación de seguridad: que no sea la hoja de SKUs por error
-                if "Articulo" not in df_p.columns:
-                    res['providers'] = df_p.dropna(how='all').to_dict('records')
-                    found_p = True
-                    break
+        # 2. PROVEEDORES (Búsqueda flexible: cualquier pestaña que contenga 'PROV')
+        prov_tab = next((s for s in self.cached_xl.sheet_names if "PROV" in s.upper()), None)
         
-        if not found_p:
-            res['error'] = "⚠️ No se encontró la pestaña 'Proveedores' en el Excel."
+        if prov_tab:
+            df_p = self.cached_xl.parse(prov_tab)
+            # Limpiar nombres de columnas (quitar espacios fantasmas)
+            df_p.columns = [str(c).strip() for c in df_p.columns]
+            
+            # Validación: que no sea la de SKU por accidente
+            if "Articulo" not in df_p.columns:
+                # Quitamos filas vacías y convertimos a dict
+                res['providers'] = df_p.dropna(how='all', subset=[df_p.columns[0]]).to_dict('records')
+            else:
+                # Si entramos aquí, es que 'PROV' detectó la de SKU o algo raro
+                res['error'] = f"⚠️ Error: La pestaña '{prov_tab}' parece contener productos, no proveedores."
+        
+        if not res['providers'] and not res['error']:
+            tabs = ", ".join(self.cached_xl.sheet_names)
+            res['error'] = f"⚠️ No se encontró la pestaña 'Proveedores'. Pestañas encontradas: {tabs}"
             
         return res
 

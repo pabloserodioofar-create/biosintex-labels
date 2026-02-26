@@ -60,20 +60,18 @@ def search_sku(q):
     return res[:30]
 
 def search_prov(q):
-    if not q or not st.session_state.providers: return []
+    if not q or not st.session_state.get('providers'): return []
     q_low = q.lower()
     res = []
     for p in st.session_state.providers:
-        # FILTRO CRÍTICO: Si tiene columna 'Articulo' NO es un proveedor
-        if 'Articulo' in p: continue
-        
-        # Guardamos todo el texto de la fila para buscar
+        # Buscar en todos los valores de la fila
         fila_texto = " ".join([str(v) for v in p.values()]).lower()
         if q_low in fila_texto:
-            # Seleccionamos el nombre del proveedor
-            nombre = p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', list(p.values())[0])))
-            res.append(str(nombre))
-    return list(set(res))
+            # Prioridad de nombres de columna: Proveedor, PROVEEDOR, Nombre, o el primero disponible
+            nombre = p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', next(iter(p.values()), 'Sin nombre'))))
+            if nombre and str(nombre) != 'nan':
+                res.append(str(nombre))
+    return sorted(list(set(res)))[:30]
 
 # --- UI ---
 st.title(f"📦 Recepción Biosintex ({st.session_state.env})")
