@@ -85,6 +85,14 @@ with st.sidebar:
         st.session_state.env = env
         st.rerun()
     st.button("🔄 Sincronizar", on_click=refresh_data)
+    
+    # Mostrar estado de carga
+    if 'skus' in st.session_state:
+        st.caption(f"✅ {len(st.session_state.skus)} SKUs cargados")
+    if 'providers' in st.session_state:
+        st.caption(f"✅ {len(st.session_state.providers)} Proveedores cargados")
+    if hasattr(st.session_state.manager, 'last_sync') and st.session_state.manager.last_sync:
+        st.caption(f"🕒 Última sinc: {st.session_state.manager.last_sync.strftime('%H:%M:%S')}")
 
 tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
 
@@ -101,9 +109,20 @@ with tab1:
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
         lote = st.text_input("Número de Lote *")
         vto = st.date_input("Vencimiento *")
-        # LISTA DE PRESENTACION AMPLIADA
-        pres_list = ["CAJAS", "BOLSA BLANCA", "BOLSA KRAFT", "TAMBOR", "BIDON", "FRASCO", "BALDE", "POTE", "AMPOLLA", "OTROS"]
-        pres = st.selectbox("Presentación *", pres_list)
+        
+        c_or, c_pr = st.columns(2)
+        with c_or:
+            origen = st.selectbox("Origen *", ["Nacional", "Importado"])
+        with c_pr:
+            # LISTA DE PRESENTACION AMPLIADA SEGÚN EXCEL
+            pres_list = [
+                "CAJAS", "BOLSA BLANCA", "BOBINA", "TAMBOR VERDE", "BOLSA", 
+                "BOBINAS", "CAJAS BLANCAS", "TAMBORES VERDES", "BIDON AZUL", 
+                "BIDON", "CUETE CARTON", "BOLSA NEGRA", "BIDON AMARILLO", 
+                "TAMBOR", "BALDE", "TAMBOR AZUL", "CUETE", "CAJA DE CARTON", 
+                "CAJAS PLASTICAS", "BOLSAS DE CARTON", "OTROS"
+            ]
+            pres = st.selectbox("Presentación *", pres_list)
 
     with c2:
         st.subheader("Recepción")
@@ -112,7 +131,10 @@ with tab1:
         bul = st.number_input("Bultos *", min_value=1, step=1)
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *")
-        st.text_input("Nº Recepción (Auto)", value=str(st.session_state.manager.get_state(env=st.session_state.env).get("last_reception", 0)+1), disabled=True)
+        
+        current_state = st.session_state.manager.get_state(env=st.session_state.env)
+        next_rec = str(current_state.get("last_reception", 0) + 1)
+        st.text_input("Nº Recepción (Auto)", value=next_rec, disabled=True)
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
         sm1, sm2 = st.columns(2)
@@ -125,7 +147,27 @@ with tab1:
         else:
             an = st.session_state.manager.generate_next_number(env=st.session_state.env)
             rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
-            entry = {'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 'Número de Análisis': an, 'Lote': lote, 'Vto': vto.strftime("%d/%m/%Y"), 'Cantidad': cant, 'UDM': udm, 'Cantidad Bultos': bul, 'Proveedor': prov, 'Número de Remito': rem, 'recepcion_num': int(rc), 'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env}
+            
+            # El diccionario debe contener los campos para el Excel
+            entry = {
+                'Fecha': datetime.now().strftime("%d/%m/%Y"), 
+                'SKU': sku, 
+                'Descripción de Producto': sku_desc, 
+                'Número de Análisis': an, 
+                'Lote': lote, 
+                'Origen': origen,
+                'Cantidad': cant, 
+                'UDM': udm, 
+                'Cantidad Bultos': bul, 
+                'Vto': vto.strftime("%d/%m/%Y"), 
+                'Proveedor': prov, 
+                'Número de Remito': rem, 
+                'Presentacion': pres,
+                'recepcion_num': int(rc), 
+                'realizado_por': real, 
+                'controlado_por': cont, 
+                'Entorno': st.session_state.env
+            }
             ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
             if ok:
                 st.session_state.current_label = entry
