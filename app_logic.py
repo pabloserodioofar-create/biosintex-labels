@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import requests
 import io
+import time
 
 class AnalysisManager:
     def __init__(self, spreadsheet_url, script_url=None):
@@ -12,8 +13,8 @@ class AnalysisManager:
         self.last_sync = None
         
     def _fetch_all(self):
-        """Descarga el archivo completo en formato XLSX (más confiable para varias pestañas)"""
-        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=xlsx"
+        """Descarga el archivo completo en formato XLSX con cache-buster"""
+        url = f"https://docs.google.com/spreadsheets/d/{self.doc_id}/export?format=xlsx&t={int(time.time())}"
         try:
             response = requests.get(url, timeout=20)
             if response.status_code == 200:
@@ -146,5 +147,18 @@ class AnalysisManager:
             self._fetch_all()
         ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
         if self.cached_xl and ws in self.cached_xl.sheet_names:
-            return self.cached_xl.parse(ws)
+            df = self.cached_xl.parse(ws)
+            if not df.empty:
+                # Filtrar la fila de instrucciones (fila 2 del Excel original)
+                # Buscamos patrones de palabras que solo están en la fila instructiva
+                patron_instrucciones = "toma|asignado|manual|ejemplo|ingresa|automatico|pestaña|carga"
+                
+                # Aplicamos el filtro en todas las columnas para estar seguros
+                # Si alguna celda de la fila contiene palabras de instrucción, eliminamos la fila completa
+                mask = df.astype(str).apply(lambda x: x.str.contains(patron_instrucciones, case=False, na=False)).any(axis=1)
+                df = df[~mask]
+                
+                # Eliminar filas totalmente vacías
+                df = df.dropna(how='all')
+            return df
         return pd.DataFrame()
