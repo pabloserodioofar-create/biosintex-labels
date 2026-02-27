@@ -129,7 +129,14 @@ with tab1:
         bul = st.number_input("Bultos *", min_value=1, step=1, key="bul_in")
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *", key="rem_in")
-        oc = st.text_input("Nº Orden de Compra (OC)", key="oc_in")
+        
+        c_oc, c_rc = st.columns(2)
+        with c_oc:
+            oc = st.text_input("Nº Orden de Compra (OC)", key="oc_in")
+        with c_rc:
+            current_state = st.session_state.manager.get_state(env=st.session_state.env)
+            next_rec = str(current_state.get("last_reception", 0) + 1)
+            st.text_input("Nº Recepción (Sugerido)", value=next_rec, disabled=True)
         
         # Mapeo de personal por planta
         staff_by_plant = {
@@ -171,17 +178,12 @@ with tab1:
                     keys_to_reset = [
                         "sku_in", "lote_in", "vto_in", "ori_in", "pres_in", 
                         "udm_in", "cant_in", "bul_in", "prov_in", "rem_in", 
-                        "real_in", "cont_in", "planta_in", "oc_in"
+                        "real_in", "cont_in", "oc_in"
+                        # No reseteamos 'planta_in' para que la planta quede fija si cargan varios seguidos
                     ]
                     for rkey in keys_to_reset:
                         if rkey in st.session_state:
-                            st.session_state[rkey] = None if "in" in rkey and ("sku" in rkey or "prov" in rkey) else ""
-                            # Para date_input y selectbox manejamos valores por defecto
-                            if rkey == "vto_in": st.session_state[rkey] = datetime.now()
-                            if rkey == "bul_in": st.session_state[rkey] = 1
-                            if rkey == "cant_in": st.session_state[rkey] = 0.0
-                            if rkey in ["real_in", "cont_in"]: st.session_state[rkey] = "Seleccione..."
-                            if rkey == "planta_in": st.session_state[rkey] = "Barracas"
+                            del st.session_state[rkey]
                     
                     st.session_state.just_saved = True
                     st.rerun()
