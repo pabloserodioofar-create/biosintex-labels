@@ -42,6 +42,8 @@ def refresh_data():
         data = st.session_state.manager.get_excel_data()
         st.session_state.skus = data.get('skus', [])
         st.session_state.providers = data.get('providers', [])
+        # También refrescar historial
+        st.session_state.history = st.session_state.manager.get_history(env=st.session_state.env)
         if data.get('error'): st.warning(data['error'])
 
 if 'skus' not in st.session_state or not st.session_state.skus:
@@ -64,10 +66,8 @@ def search_prov(q):
     q_low = q.lower()
     res = []
     for p in st.session_state.providers:
-        # Buscar en todos los valores de la fila
         fila_texto = " ".join([str(v) for v in p.values()]).lower()
         if q_low in fila_texto:
-            # Prioridad de nombres de columna: Proveedor, PROVEEDOR, Nombre, o el primero disponible
             nombre = p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', next(iter(p.values()), 'Sin nombre'))))
             if nombre and str(nombre) != 'nan':
                 res.append(str(nombre))
@@ -78,19 +78,18 @@ st.title(f"📦 Recepción Biosintex ({st.session_state.env})")
 
 with st.sidebar:
     st.header("⚙️ Ajustes")
-    env = st.radio("Entorno:", ["Producción", "Pruebas"], index=0 if st.session_state.env=="Producción" else 1)
-    if env != st.session_state.env:
-        st.session_state.env = env
+    env_sidebar = st.radio("Entorno:", ["Producción", "Pruebas"], index=0 if st.session_state.env=="Producción" else 1)
+    if env_sidebar != st.session_state.env:
+        st.session_state.env = env_sidebar
         st.rerun()
     st.button("🔄 Sincronizar", on_click=refresh_data)
     
-    # Mostrar estado de carga
     if 'skus' in st.session_state:
         st.caption(f"✅ {len(st.session_state.skus)} SKUs cargados")
     if 'providers' in st.session_state:
         st.caption(f"✅ {len(st.session_state.providers)} Proveedores cargados")
     if hasattr(st.session_state.manager, 'last_sync') and st.session_state.manager.last_sync:
-        st.caption(f"🕒 Última sinc: {st.session_state.manager.last_sync.strftime('%H:%M:%S')}")
+        st.caption(f"🕒 Sinc: {st.session_state.manager.last_sync.strftime('%H:%M:%S')}")
 
 tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
 
@@ -98,6 +97,7 @@ with tab1:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Insumo")
+        # Usamos llaves para el estado para poder resetear
         sku = st_searchbox(search_sku, label="Buscar SKU *", key="sku_in")
         sku_desc = ""
         if sku:
@@ -105,14 +105,14 @@ with tab1:
                 if str(s.get('Articulo', s.get('ID',''))) == str(sku):
                     sku_desc = s.get('Nombre','')
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
-        lote = st.text_input("Número de Lote *")
-        vto = st.date_input("Vencimiento *")
+        
+        lote = st.text_input("Número de Lote *", key="lote_in")
+        vto = st.date_input("Vencimiento *", key="vto_in")
         
         c_or, c_pr = st.columns(2)
         with c_or:
-            origen = st.selectbox("Origen *", ["Nacional", "Importado"])
+            origen = st.selectbox("Origen *", ["Nacional", "Importado"], key="ori_in")
         with c_pr:
-            # LISTA DE PRESENTACION AMPLIADA SEGÚN EXCEL
             pres_list = [
                 "CAJAS", "BOLSA BLANCA", "BOBINA", "TAMBOR VERDE", "BOLSA", 
                 "BOBINAS", "CAJAS BLANCAS", "TAMBORES VERDES", "BIDON AZUL", 
@@ -120,15 +120,15 @@ with tab1:
                 "TAMBOR", "BALDE", "TAMBOR AZUL", "CUETE", "CAJA DE CARTON", 
                 "CAJAS PLASTICAS", "BOLSAS DE CARTON", "OTROS"
             ]
-            pres = st.selectbox("Presentación *", pres_list)
+            pres = st.selectbox("Presentación *", pres_list, key="pres_in")
 
     with c2:
         st.subheader("Recepción")
-        udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"])
-        cant = st.number_input("Cantidad Total *", min_value=0.0)
-        bul = st.number_input("Bultos *", min_value=1, step=1)
+        udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"], key="udm_in")
+        cant = st.number_input("Cantidad Total *", min_value=0.0, key="cant_in")
+        bul = st.number_input("Bultos *", min_value=1, step=1, key="bul_in")
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
-        rem = st.text_input("Nº Remito *")
+        rem = st.text_input("Nº Remito *", key="rem_in")
         
         current_state = st.session_state.manager.get_state(env=st.session_state.env)
         next_rec = str(current_state.get("last_reception", 0) + 1)
@@ -136,42 +136,78 @@ with tab1:
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
         sm1, sm2 = st.columns(2)
-        with sm1: real = st.selectbox("Realizado por *", ["Seleccione..."] + staff)
-        with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff)
+        with sm1: real = st.selectbox("Realizado por *", ["Seleccione..."] + staff, key="real_in")
+        with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff, key="cont_in")
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
         if not sku or not lote or not prov or real=="Seleccione...":
             st.error("⚠️ Faltan datos obligatorios.")
         else:
-            an = st.session_state.manager.generate_next_number(env=st.session_state.env)
-            rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
-            
-            # El diccionario debe contener los campos para el Excel
-            entry = {
-                'Fecha': datetime.now().strftime("%d/%m/%Y"), 
-                'SKU': sku, 
-                'Descripción de Producto': sku_desc, 
-                'Número de Análisis': an, 
-                'Lote': lote, 
-                'Origen': origen,
-                'Cantidad': cant, 
-                'UDM': udm, 
-                'Cantidad Bultos': bul, 
-                'Vto': vto.strftime("%d/%m/%Y"), 
-                'Proveedor': prov, 
-                'Número de Remito': rem, 
-                'Presentacion': pres,
-                'recepcion_num': int(rc), 
-                'realizado_por': real, 
-                'controlado_por': cont, 
-                'Entorno': st.session_state.env
+            with st.spinner("Guardando en la nube..."):
+                an = st.session_state.manager.generate_next_number(env=st.session_state.env)
+                rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
+                
+                entry = {
+                    'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 
+                    'Número de Análisis': an, 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm, 
+                    'Cantidad Bultos': bul, 'Vto': vto.strftime("%d/%m/%Y"), 'Proveedor': prov, 
+                    'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': int(rc), 
+                    'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env
+                }
+                ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
+                if ok:
+                    st.session_state.current_label = entry
+                    st.session_state.show_label = True
+                    # Limpiar formulario borrando llaves de session_state
+                    for rkey in ["sku_in", "lote_in", "rem_in", "cant_in", "bul_in", "prov_in", "real_in", "cont_in"]:
+                        if rkey in st.session_state: del st.session_state[rkey]
+                    st.rerun()
+                else: st.error(f"Error al guardar: {msg}")
+
+with tab2:
+    st.subheader(f"📊 Historial de Cargas ({st.session_state.env})")
+    
+    if st.button("🔄 Refrescar Historial"):
+        st.session_state.history = st.session_state.manager.get_history(env=st.session_state.env)
+        st.rerun()
+
+    if 'history' in st.session_state and not st.session_state.history.empty:
+        df_hist = st.session_state.history.copy()
+        
+        # Exportar a Excel
+        import io
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_hist.to_excel(writer, index=False)
+        st.download_button(label="📥 Descargar Excel", data=output.getvalue(), file_name=f"historial_{st.session_state.env}.xlsx", mime="application/vnd.ms-excel")
+        
+        st.info("💡 Haz doble clic en una celda para editar (excepto campos clave).")
+        
+        # Editor de datos
+        edited_df = st.data_editor(df_hist, use_container_width=True, hide_index=True, disabled=["Número de Análisis", "Fecha", "recepcion_num"])
+        
+        st.divider()
+        st.subheader("🖨️ Reimprimir Rótulo")
+        sel_an = st.selectbox("Seleccione Análisis para reimprimir:", edited_df["Número de Análisis"].tolist())
+        if st.button("🔍 Cargar para Impresión"):
+            selected_row = edited_df[edited_df["Número de Análisis"] == sel_an].iloc[0].to_dict()
+            # Mapear nombres de columnas si vienen con caracteres especiales del Excel
+            re_entry = {
+                'Fecha': selected_row.get('Fecha', ''), 'SKU': selected_row.get('SKU', ''), 
+                'Descripción de Producto': selected_row.get('Descripción de Producto', selected_row.get('Descripcion de Producto', '')),
+                'Número de Análisis': selected_row.get('Número de Análisis', selected_row.get('Numero de Analisis', '')),
+                'Lote': selected_row.get('Lote', ''), 'Origen': selected_row.get('Origen', ''),
+                'Cantidad': selected_row.get('Cantidad', 0), 'UDM': selected_row.get('UDM', ''),
+                'Cantidad Bultos': int(selected_row.get('Cantidad Bultos', 1)), 'Vto': selected_row.get('Vto', ''),
+                'Proveedor': selected_row.get('Proveedor', ''), 'Número de Remito': selected_row.get('Número de Remito', selected_row.get('Numero de Remito', '')),
+                'Presentacion': selected_row.get('Presentacion', selected_row.get('Presentación', '')),
+                'recepcion_num': selected_row.get('recepcion_num', ''), 'realizado_por': selected_row.get('realizado_por', ''), 'controlado_por': selected_row.get('controlado_por', '')
             }
-            ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
-            if ok:
-                st.session_state.current_label = entry
-                st.session_state.show_label = True
-                st.rerun()
-            else: st.error(f"Error al guardar: {msg}")
+            st.session_state.current_label = re_entry
+            st.session_state.show_label = True
+            st.rerun()
+    else:
+        st.write("No hay datos cargados. Presiona 'Refrescar Historial'.")
 
 if st.session_state.get('show_label'):
     d = st.session_state.current_label
