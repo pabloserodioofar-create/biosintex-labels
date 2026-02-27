@@ -129,6 +129,7 @@ with tab1:
         bul = st.number_input("Bultos *", min_value=1, step=1, key="bul_in")
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *", key="rem_in")
+        oc = st.text_input("Nº Orden de Compra (OC)", key="oc_in")
         
         # Mapeo de personal por planta
         staff_by_plant = {
@@ -157,7 +158,7 @@ with tab1:
                     'Cantidad Bultos': bul, 'Vto': vto.strftime("%d/%m/%Y"), 'Proveedor': prov, 
                     'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': 0, 
                     'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env,
-                    'Planta': planta
+                    'Planta': planta, 'OC': oc
                 }
                 ok, result = st.session_state.manager.save_entry_remote(entry, env=st.session_state.env)
                 if ok:
@@ -170,10 +171,17 @@ with tab1:
                     keys_to_reset = [
                         "sku_in", "lote_in", "vto_in", "ori_in", "pres_in", 
                         "udm_in", "cant_in", "bul_in", "prov_in", "rem_in", 
-                        "real_in", "cont_in", "planta_in"
+                        "real_in", "cont_in", "planta_in", "oc_in"
                     ]
                     for rkey in keys_to_reset:
-                        if rkey in st.session_state: del st.session_state[rkey]
+                        if rkey in st.session_state:
+                            st.session_state[rkey] = None if "in" in rkey and ("sku" in rkey or "prov" in rkey) else ""
+                            # Para date_input y selectbox manejamos valores por defecto
+                            if rkey == "vto_in": st.session_state[rkey] = datetime.now()
+                            if rkey == "bul_in": st.session_state[rkey] = 1
+                            if rkey == "cant_in": st.session_state[rkey] = 0.0
+                            if rkey in ["real_in", "cont_in"]: st.session_state[rkey] = "Seleccione..."
+                            if rkey == "planta_in": st.session_state[rkey] = "Barracas"
                     
                     st.session_state.just_saved = True
                     st.rerun()

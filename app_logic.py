@@ -148,7 +148,8 @@ class AnalysisManager:
                 str(data.get('Proveedor', '')), 
                 str(data.get('Número de Remito', '')), 
                 str(data.get('Presentacion', '')),
-                str(data.get('Planta', '')) # 14va Columna: Planta
+                str(data.get('Planta', '')), # 14va Columna: Planta
+                str(data.get('OC', '')) # 15va Columna: OC
             ]
             
             payload = {
