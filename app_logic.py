@@ -126,6 +126,48 @@ class AnalysisManager:
             return False, f"Server Error {resp.status_code} (Revisa la URL de Apps Script)"
         except Exception as e: return False, f"Error: {str(e)}"
 
+    def save_entry_remote(self, data, env="Producción"):
+        if not self.script_url or "/exec" not in self.script_url:
+            return False, "⚠️ Configuración incompleta: Pega la URL de Apps Script en app.py"
+        
+        ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
+        try:
+            # Mandamos la fila al servidor. El servidor generará el número de análisis.
+            # Dejamos espacio para el número de análisis en el índice 3
+            row_data = [
+                str(data.get('Fecha', '')), 
+                str(data.get('SKU', '')), 
+                str(data.get('Descripción de Producto', '')),
+                "GENERANDO...", # Esto lo reemplazará el script de Google
+                str(data.get('Lote', '')), 
+                str(data.get('Origen', '')),
+                str(data.get('Cantidad', '')), 
+                str(data.get('UDM', '')), 
+                str(data.get('Cantidad Bultos', '')),
+                str(data.get('Vto', '')),
+                str(data.get('Proveedor', '')), 
+                str(data.get('Número de Remito', '')), 
+                str(data.get('Presentacion', ''))
+            ]
+            
+            payload = {
+                "action": "save_entry", 
+                "sheet": ws, 
+                "row": row_data,
+                "env": env
+            }
+            
+            resp = requests.post(self.script_url, json=payload, timeout=20)
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get("status") == "OK":
+                    self.cached_xl = None # Limpiar caché para forzar descarga de nuevos datos
+                    return True, result
+                return False, f"Server Error: {result.get('status')}"
+            return False, f"Error de conexión {resp.status_code}"
+        except Exception as e:
+            return False, str(e)
+
     def generate_next_number(self, env="Producción"):
         s = self.get_state(env)
         y = datetime.now().year % 100

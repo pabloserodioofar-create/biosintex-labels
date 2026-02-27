@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- CONFIGURACION MUY IMPORTANTE ---
 # 1. PEGA AQUÍ TU URL DE APPS SCRIPT (la que termina en /exec)
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwz4n0CAa5D6YdLTUxN0qbSKM1zNbnYA3zv9CE6HNe-8heIwbCAaLMOaAJTG8YwvB-OTQ/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbylFGmrFKbVTYcYWF998q0yzlQrWPkuWoWvGcx0Pwl87KTVpEfhy9Xm_ZqivpnE2aaXDw/exec"
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgYK5tw40Wt1owIIylQ"
 
@@ -135,36 +135,51 @@ with tab1:
         st.text_input("Nº Recepción (Auto)", value=next_rec, disabled=True)
         
         staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
-        sm1, sm2 = st.columns(2)
+        sm1, sm2, sm3 = st.columns(3)
         with sm1: real = st.selectbox("Realizado por *", ["Seleccione..."] + staff, key="real_in")
         with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff, key="cont_in")
+        with sm3: planta = st.selectbox("Planta *", ["Planta 1", "Planta 2"], key="planta_in")
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
         if not sku or not lote or not prov or real=="Seleccione...":
             st.error("⚠️ Faltan datos obligatorios.")
         else:
-            with st.spinner("Guardando en la nube..."):
-                an = st.session_state.manager.generate_next_number(env=st.session_state.env)
-                rc = st.session_state.manager.generate_next_reception(env=st.session_state.env)
-                
+            with st.spinner("Generando Análisis en el servidor..."):
+                # No generamos números aquí, dejamos que el servidor lo haga
                 entry = {
                     'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 
-                    'Número de Análisis': an, 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm, 
+                    'Número de Análisis': "PENDIENTE", 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm, 
                     'Cantidad Bultos': bul, 'Vto': vto.strftime("%d/%m/%Y"), 'Proveedor': prov, 
-                    'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': int(rc), 
-                    'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env
+                    'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': 0, 
+                    'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env,
+                    'Planta': planta
                 }
-                ok, msg = st.session_state.manager.save_entry(entry, env=st.session_state.env)
+                ok, result = st.session_state.manager.save_entry_remote(entry, env=st.session_state.env)
                 if ok:
+                    # Actualizar la entrada con los números REALES generados por el servidor
+                    entry['Número de Análisis'] = result.get('analysis')
+                    entry['recepcion_num'] = result.get('reception')
                     st.session_state.current_label = entry
                     st.session_state.show_label = True
-                    # Limpiar formulario borrando llaves de session_state
-                    for rkey in ["sku_in", "lote_in", "rem_in", "cant_in", "bul_in", "prov_in", "real_in", "cont_in"]:
+                    
+                    # --- LIMPIEZA TOTAL DEL FORMULARIO ---
+                    keys_to_reset = [
+                        "sku_in", "lote_in", "vto_in", "ori_in", "pres_in", 
+                        "udm_in", "cant_in", "bul_in", "prov_in", "rem_in", 
+                        "real_in", "cont_in", "planta_in"
+                    ]
+                    for rkey in keys_to_reset:
                         if rkey in st.session_state: del st.session_state[rkey]
+                    
+                    st.session_state.just_saved = True
                     st.rerun()
-                else: st.error(f"Error al guardar: {msg}")
+                else: st.error(f"Error al guardar: {result}")
 
 with tab2:
+    # Mostrar mensaje de éxito si acaba de guardar
+    if st.session_state.get('just_saved'):
+        st.success("✅ ¡Registro guardado y formulario reiniciado con éxito!")
+        st.session_state.just_saved = False
     st.subheader(f"📊 Historial de Cargas ({st.session_state.env})")
     
     if st.button("🔄 Refrescar Historial"):
