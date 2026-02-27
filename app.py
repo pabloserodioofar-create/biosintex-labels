@@ -130,22 +130,27 @@ with tab1:
         prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
         rem = st.text_input("Nº Remito *", key="rem_in")
         
-        current_state = st.session_state.manager.get_state(env=st.session_state.env)
-        next_rec = str(current_state.get("last_reception", 0) + 1)
-        st.text_input("Nº Recepción (Auto)", value=next_rec, disabled=True)
+        # Mapeo de personal por planta
+        staff_by_plant = {
+            "Barracas": ["Ruben Guzman", "Gaston Fonteina", "Adrian Fernandez", "Walter Alarcon", "Maximiliano Duarte"],
+            "Pibera": ["Hernan Miño", "Sebastian Colmano", "Gustavo Alegre", "Federico Scolazzo"]
+        }
         
-        staff = ["Walter Alarcon", "Gaston Fonteina", "Adrian Fernadez", "Ruben Guzman", "Maximiliano Duarte", "Hernan Miño", "Gustavo Alegre", "Sebastian Colmano", "Federico Scolazzo"]
-        sm1, sm2, sm3 = st.columns(3)
-        with sm1: real = st.selectbox("Realizado por *", ["Seleccione..."] + staff, key="real_in")
-        with sm2: cont = st.selectbox("Controlado por *", ["Seleccione..."] + staff, key="cont_in")
-        with sm3: planta = st.selectbox("Planta *", ["Planta 1", "Planta 2"], key="planta_in")
+        c_pl, c_st1, c_st2 = st.columns([1, 1.5, 1.5])
+        with c_pl:
+            planta = st.selectbox("Planta *", ["Barracas", "Pibera"], key="planta_in")
+        
+        current_staff = staff_by_plant.get(planta, [])
+        with c_st1: 
+            real = st.selectbox("Realizado por *", ["Seleccione..."] + current_staff, key="real_in")
+        with c_st2: 
+            cont = st.selectbox("Controlado por *", ["Seleccione..."] + current_staff, key="cont_in")
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
         if not sku or not lote or not prov or real=="Seleccione...":
             st.error("⚠️ Faltan datos obligatorios.")
         else:
             with st.spinner("Generando Análisis en el servidor..."):
-                # No generamos números aquí, dejamos que el servidor lo haga
                 entry = {
                     'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 
                     'Número de Análisis': "PENDIENTE", 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm, 
@@ -156,7 +161,6 @@ with tab1:
                 }
                 ok, result = st.session_state.manager.save_entry_remote(entry, env=st.session_state.env)
                 if ok:
-                    # Actualizar la entrada con los números REALES generados por el servidor
                     entry['Número de Análisis'] = result.get('analysis')
                     entry['recepcion_num'] = result.get('reception')
                     st.session_state.current_label = entry

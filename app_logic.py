@@ -138,7 +138,7 @@ class AnalysisManager:
                 str(data.get('Fecha', '')), 
                 str(data.get('SKU', '')), 
                 str(data.get('Descripción de Producto', '')),
-                "GENERANDO...", # Esto lo reemplazará el script de Google
+                "GENERANDO...", 
                 str(data.get('Lote', '')), 
                 str(data.get('Origen', '')),
                 str(data.get('Cantidad', '')), 
@@ -147,7 +147,8 @@ class AnalysisManager:
                 str(data.get('Vto', '')),
                 str(data.get('Proveedor', '')), 
                 str(data.get('Número de Remito', '')), 
-                str(data.get('Presentacion', ''))
+                str(data.get('Presentacion', '')),
+                str(data.get('Planta', '')) # 14va Columna: Planta
             ]
             
             payload = {
