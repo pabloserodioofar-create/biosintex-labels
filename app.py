@@ -12,6 +12,20 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1IhDCR-BkAl5mk9C20eCCzZ50dgY
 
 st.set_page_config(page_title="Gestión Biosintex", layout="wide")
 
+# --- CONSTANTES ---
+PRES_LIST = [
+    "CAJAS", "BOLSA BLANCA", "BOBINA", "TAMBOR VERDE", "BOLSA", 
+    "BOBINAS", "CAJAS BLANCAS", "TAMBORES VERDES", "BIDON AZUL", 
+    "BIDON", "CUETE CARTON", "BOLSA NEGRA", "BIDON AMARILLO", 
+    "TAMBOR", "BALDE", "TAMBOR AZUL", "CUETE", "CAJA DE CARTON", 
+    "CAJAS PLASTICAS", "BOLSAS DE CARTON", "OTROS"
+]
+
+STAFF_BY_PLANT = {
+    "Barracas": ["Ruben Guzman", "Gaston Fonteina", "Adrian Fernandez", "Walter Alarcon", "Maximiliano Duarte"],
+    "Pibera": ["Hernan Miño", "Sebastian Colmano", "Gustavo Alegre", "Federico Scolazzo"]
+}
+
 # Mensaje recordatorio
 if "AKfycb" not in SCRIPT_URL:
     st.error("🛑 FALTA CONFIGURAR LA URL DE ESCRITURA. Ve al archivo app.py y pega tu URL de Apps Script en la línea 8.")
@@ -113,14 +127,7 @@ with tab1:
         with c_or:
             origen = st.selectbox("Origen *", ["Nacional", "Importado"], key="ori_in")
         with c_pr:
-            pres_list = [
-                "CAJAS", "BOLSA BLANCA", "BOBINA", "TAMBOR VERDE", "BOLSA", 
-                "BOBINAS", "CAJAS BLANCAS", "TAMBORES VERDES", "BIDON AZUL", 
-                "BIDON", "CUETE CARTON", "BOLSA NEGRA", "BIDON AMARILLO", 
-                "TAMBOR", "BALDE", "TAMBOR AZUL", "CUETE", "CAJA DE CARTON", 
-                "CAJAS PLASTICAS", "BOLSAS DE CARTON", "OTROS"
-            ]
-            pres = st.selectbox("Presentación *", pres_list, key="pres_in")
+            pres = st.selectbox("Presentación *", PRES_LIST, key="pres_in")
 
     with c2:
         st.subheader("Recepción")
@@ -138,21 +145,18 @@ with tab1:
             next_rec = str(current_state.get("last_reception", 0) + 1)
             st.text_input("Nº Recepción (Sugerido)", value=next_rec, disabled=True)
         
-        # Mapeo de personal por planta
-        staff_by_plant = {
-            "Barracas": ["Ruben Guzman", "Gaston Fonteina", "Adrian Fernandez", "Walter Alarcon", "Maximiliano Duarte"],
-            "Pibera": ["Hernan Miño", "Sebastian Colmano", "Gustavo Alegre", "Federico Scolazzo"]
-        }
-        
         c_pl, c_st1, c_st2 = st.columns([1, 1.5, 1.5])
         with c_pl:
             planta = st.selectbox("Planta *", ["Barracas", "Pibera"], key="planta_in")
         
-        current_staff = staff_by_plant.get(planta, [])
+        current_staff = STAFF_BY_PLANT.get(planta, [])
         with c_st1: 
             real = st.selectbox("Realizado por *", ["Seleccione..."] + current_staff, key="real_in")
+        
+        # Filtrar el seleccionado en 'Realizado' para que no se repita en 'Controlado'
+        cont_options = ["Seleccione..."] + [s for s in current_staff if s != real]
         with c_st2: 
-            cont = st.selectbox("Controlado por *", ["Seleccione..."] + current_staff, key="cont_in")
+            cont = st.selectbox("Controlado por *", cont_options, key="cont_in")
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
         if not sku or not lote or not prov or real=="Seleccione...":
@@ -212,8 +216,35 @@ with tab2:
         
         st.info("💡 Haz doble clic en una celda para editar (excepto campos clave).")
         
-        # Editor de datos
-        edited_df = st.data_editor(df_hist, use_container_width=True, hide_index=True, disabled=["Número de Análisis", "Fecha", "recepcion_num"])
+        # Preparar listas para los selectores del editor (vienen de la base)
+        sku_list = sorted(list(set([str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')])))
+        desc_list = sorted(list(set([str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')])))
+        
+        prov_list = []
+        if 'providers' in st.session_state:
+            for p in st.session_state.providers:
+                name = p.get('Proveedor', p.get('PROVEEDOR', p.get('Nombre', '')))
+                if name and str(name) != 'nan': prov_list.append(str(name).strip())
+        prov_list = sorted(list(set(prov_list)))
+
+        # Editor de datos con columnas configuradas como Selectbox
+        edited_df = st.data_editor(
+            df_hist, 
+            use_container_width=True, 
+            hide_index=True, 
+            disabled=["Número de Análisis", "Fecha", "recepcion_num"],
+            column_config={
+                "SKU": st.column_config.SelectboxColumn("SKU", options=sku_list, required=True),
+                "Descripción de Producto": st.column_config.SelectboxColumn("Descripción de Producto", options=desc_list),
+                "Proveedor": st.column_config.SelectboxColumn("Proveedor", options=prov_list),
+                "Presentacion": st.column_config.SelectboxColumn("Presentación", options=PRES_LIST),
+                "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera"]),
+                "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado"]),
+                "UDM": st.column_config.SelectboxColumn("UDM", options=["KG", "UN", "L", "M"]),
+                "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
+                "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
+            }
+        )
         
         st.divider()
         st.subheader("🖨️ Reimprimir Rótulo")
