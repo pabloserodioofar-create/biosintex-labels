@@ -196,15 +196,47 @@ class AnalysisManager:
             df = self.cached_xl.parse(ws)
             if not df.empty:
                 # Filtrar la fila de instrucciones (fila 2 del Excel original)
-                # Buscamos patrones de palabras que solo están en la fila instructiva
                 patron_instrucciones = "toma|asignado|manual|ejemplo|ingresa|automatico|pestaña|carga"
-                
-                # Aplicamos el filtro en todas las columnas para estar seguros
-                # Si alguna celda de la fila contiene palabras de instrucción, eliminamos la fila completa
                 mask = df.astype(str).apply(lambda x: x.str.contains(patron_instrucciones, case=False, na=False)).any(axis=1)
                 df = df[~mask]
-                
-                # Eliminar filas totalmente vacías
                 df = df.dropna(how='all')
             return df
         return pd.DataFrame()
+
+    def update_history_remote(self, df, env="Producción"):
+        """Envía el historial completo editado al servidor para actualizar la hoja"""
+        if not self.script_url or "/exec" not in self.script_url:
+            return False, "⚠️ Configuración incompleta: Pega la URL de Apps Script en app.py"
+        
+        ws = "Datos a completar" if env == "Producción" else "Datos a completar_Test"
+        try:
+            # Convertimos el DataFrame a una lista de listas (matriz) para el Apps Script
+            # Incluimos los encabezados para que el script pueda mapear o sobrescribir
+            data_to_send = [df.columns.tolist()] + df.values.tolist()
+            
+            # Limpieza de datos: convertir todo a string o tipos básicos para JSON
+            clean_data = []
+            for row in data_to_send:
+                clean_row = []
+                for val in row:
+                    if pd.isna(val): clean_row.append("")
+                    elif isinstance(val, (datetime, pd.Timestamp)): clean_row.append(val.strftime("%d/%m/%Y"))
+                    else: clean_row.append(str(val))
+                clean_data.append(clean_row)
+
+            payload = {
+                "action": "update_history", 
+                "sheet": ws, 
+                "rows": clean_data
+            }
+            
+            resp = requests.post(self.script_url, json=payload, timeout=30)
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get("status") == "OK":
+                    self.cached_xl = None # Forzar recarga
+                    return True, "OK"
+                return False, f"Servidor: {result.get('status')}"
+            return False, f"Error {resp.status_code}"
+        except Exception as e:
+            return False, str(e)

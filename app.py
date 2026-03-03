@@ -238,13 +238,51 @@ with tab2:
                 "Descripción de Producto": st.column_config.SelectboxColumn("Descripción de Producto", options=desc_list),
                 "Proveedor": st.column_config.SelectboxColumn("Proveedor", options=prov_list),
                 "Presentacion": st.column_config.SelectboxColumn("Presentación", options=PRES_LIST),
-                "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera"]),
+                "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera"], required=True),
                 "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado"]),
                 "UDM": st.column_config.SelectboxColumn("UDM", options=["KG", "UN", "L", "M"]),
+                "Número de Remito": st.column_config.TextColumn("Nº Remito"),
                 "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
                 "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
             }
         )
+
+        # --- LÓGICA DE ASOCIACIÓN SKU <-> DESCRIPCIÓN ---
+        sku_to_desc = {str(s.get('Articulo', '')): str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')}
+        desc_to_sku = {str(s.get('Nombre', '')): str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')}
+
+        if not edited_df.equals(df_hist):
+            changes_made = False
+            for i in range(len(edited_df)):
+                row = edited_df.iloc[i]
+                prev = df_hist.iloc[i]
+                
+                # Si cambió el SKU, actualizamos la descripción
+                if str(row["SKU"]) != str(prev["SKU"]):
+                    new_desc = sku_to_desc.get(str(row["SKU"]))
+                    if new_desc and new_desc != row["Descripción de Producto"]:
+                        edited_df.at[i, "Descripción de Producto"] = new_desc
+                        changes_made = True
+                
+                # Si cambió la descripción, actualizamos el SKU
+                elif str(row["Descripción de Producto"]) != str(prev["Descripción de Producto"]):
+                    new_sku = desc_to_sku.get(str(row["Descripción de Producto"]))
+                    if new_sku and new_sku != row["SKU"]:
+                        edited_df.at[i, "SKU"] = new_sku
+                        changes_made = True
+            
+            if changes_made:
+                st.session_state.history = edited_df
+                st.rerun()
+        
+        # Botón para guardar cambios (requiere soporte en Apps Script)
+        if st.button("💾 GUARDAR CAMBIOS EN LA NUBE", type="secondary"):
+            with st.spinner("Guardando cambios..."):
+                # Aquí enviamos solo las filas modificadas o todo el lote
+                # Por simplicidad, implementaremos la lógica en el manager
+                ok, msg = st.session_state.manager.update_history_remote(edited_df, env=st.session_state.env)
+                if ok: st.success("✅ Historial actualizado correctamente en Google Sheets")
+                else: st.error(f"❌ Error al guardar: {msg}")
         
         st.divider()
         st.subheader("🖨️ Reimprimir Rótulo")
