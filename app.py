@@ -230,6 +230,7 @@ with tab2:
         # Editor de datos con columnas configuradas como Selectbox
         edited_df = st.data_editor(
             df_hist, 
+            key="hist_editor",
             use_container_width=True, 
             hide_index=True, 
             disabled=["Número de Análisis", "Fecha", "recepcion_num"],
@@ -248,31 +249,43 @@ with tab2:
         )
 
         # --- LÓGICA DE ASOCIACIÓN SKU <-> DESCRIPCIÓN ---
-        sku_to_desc = {str(s.get('Articulo', '')): str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')}
-        desc_to_sku = {str(s.get('Nombre', '')): str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')}
-
-        if not edited_df.equals(df_hist):
+        # Detectar cambios a través del estado del editor de Streamlit
+        edits = st.session_state.get("hist_editor", {}).get("edited_rows", {})
+        if edits:
+            sku_to_desc = {str(s.get('Articulo', '')): str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')}
+            desc_to_sku = {str(s.get('Nombre', '')): str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')}
+            
             changes_made = False
-            for i in range(len(edited_df)):
-                row = edited_df.iloc[i]
-                prev = df_hist.iloc[i]
-                
-                # Si cambió el SKU, actualizamos la descripción
-                if str(row["SKU"]) != str(prev["SKU"]):
-                    new_desc = sku_to_desc.get(str(row["SKU"]))
-                    if new_desc and new_desc != row["Descripción de Producto"]:
-                        edited_df.at[i, "Descripción de Producto"] = new_desc
+            for row_idx_str, row_changes in edits.items():
+                idx = int(row_idx_str)
+                # Si cambió el SKU
+                if "SKU" in row_changes:
+                    new_sku = str(row_changes["SKU"])
+                    new_desc = sku_to_desc.get(new_sku)
+                    if new_desc:
+                        df_hist.at[idx, "SKU"] = new_sku
+                        df_hist.at[idx, "Descripción de Producto"] = new_desc
                         changes_made = True
                 
-                # Si cambió la descripción, actualizamos el SKU
-                elif str(row["Descripción de Producto"]) != str(prev["Descripción de Producto"]):
-                    new_sku = desc_to_sku.get(str(row["Descripción de Producto"]))
-                    if new_sku and new_sku != row["SKU"]:
-                        edited_df.at[i, "SKU"] = new_sku
+                # Si cambió la Descripción
+                elif "Descripción de Producto" in row_changes:
+                    new_desc = str(row_changes["Descripción de Producto"])
+                    new_sku = desc_to_sku.get(new_desc)
+                    if new_sku:
+                        df_hist.at[idx, "Descripción de Producto"] = new_desc
+                        df_hist.at[idx, "SKU"] = new_sku
+                        changes_made = True
+                
+                # Otros cambios (Remito, Planta, etc)
+                else:
+                    for col, val in row_changes.items():
+                        df_hist.at[idx, col] = val
                         changes_made = True
             
             if changes_made:
-                st.session_state.history = edited_df
+                st.session_state.history = df_hist
+                # Limpiamos el estado del editor para evitar bucles
+                st.session_state["hist_editor"]["edited_rows"] = {}
                 st.rerun()
         
         # Botón para guardar cambios (requiere soporte en Apps Script)
