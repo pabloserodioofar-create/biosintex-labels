@@ -50,6 +50,8 @@ if 'manager' not in st.session_state:
     st.session_state.manager = AnalysisManager(SHEET_URL, SCRIPT_URL)
 if 'env' not in st.session_state:
     st.session_state.env = "Producción"
+if 'form_id' not in st.session_state:
+    st.session_state.form_id = 0
 
 def refresh_data():
     with st.spinner("Sincronizando..."):
@@ -108,11 +110,11 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
 
 with tab1:
+    f_id = st.session_state.form_id
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Insumo")
-        # Usamos llaves para el estado para poder resetear
-        sku = st_searchbox(search_sku, label="Buscar SKU *", key="sku_in")
+        sku = st_searchbox(search_sku, label="Buscar SKU *", key=f"sku_in_{f_id}")
         sku_desc = ""
         if sku:
             for s in st.session_state.skus:
@@ -120,43 +122,43 @@ with tab1:
                     sku_desc = s.get('Nombre','')
                     st.info(f"✅ PRODUCTO: {sku_desc}"); break
         
-        lote = st.text_input("Número de Lote *", key="lote_in")
-        vto = st.date_input("Vencimiento *", key="vto_in")
+        lote = st.text_input("Número de Lote *", key=f"lote_in_{f_id}")
+        vto = st.date_input("Vencimiento *", key=f"vto_in_{f_id}")
         
         c_or, c_pr = st.columns(2)
         with c_or:
-            origen = st.selectbox("Origen *", ["Nacional", "Importado"], key="ori_in")
+            origen = st.selectbox("Origen *", ["Nacional", "Importado"], key=f"ori_in_{f_id}")
         with c_pr:
-            pres = st.selectbox("Presentación *", PRES_LIST, key="pres_in")
+            pres = st.selectbox("Presentación *", PRES_LIST, key=f"pres_in_{f_id}")
 
     with c2:
         st.subheader("Recepción")
-        udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"], key="udm_in")
-        cant = st.number_input("Cantidad Total *", min_value=0.0, key="cant_in")
-        bul = st.number_input("Bultos *", min_value=1, step=1, key="bul_in")
-        prov = st_searchbox(search_prov, label="Proveedor *", key="prov_in")
-        rem = st.text_input("Nº Remito *", key="rem_in")
+        udm = st.selectbox("Unidad (UDM) *", ["KG", "UN", "L", "M"], key=f"udm_in_{f_id}")
+        cant = st.number_input("Cantidad Total *", min_value=0.0, key=f"cant_in_{f_id}")
+        bul = st.number_input("Bultos *", min_value=1, step=1, key=f"bul_in_{f_id}")
+        prov = st_searchbox(search_prov, label="Proveedor *", key=f"prov_in_{f_id}")
+        rem = st.text_input("Nº Remito *", key=f"rem_in_{f_id}")
         
         c_oc, c_rc = st.columns(2)
         with c_oc:
-            oc = st.text_input("Nº Orden de Compra (OC)", key="oc_in")
+            oc = st.text_input("Nº Orden de Compra (OC)", key=f"oc_in_{f_id}")
         with c_rc:
             current_state = st.session_state.manager.get_state(env=st.session_state.env)
             next_rec = str(current_state.get("last_reception", 0) + 1)
-            st.text_input("Nº Recepción (Sugerido)", value=next_rec, disabled=True)
+            st.text_input("Nº Recepción (Sugerido)", value=next_rec, disabled=True, key=f"rec_sug_{f_id}")
         
         c_pl, c_st1, c_st2 = st.columns([1, 1.5, 1.5])
         with c_pl:
-            planta = st.selectbox("Planta *", ["Barracas", "Pibera"], key="planta_in")
+            planta = st.selectbox("Planta *", ["Barracas", "Pibera"], key=f"planta_in_{f_id}")
         
         current_staff = STAFF_BY_PLANT.get(planta, [])
         with c_st1: 
-            real = st.selectbox("Realizado por *", ["Seleccione..."] + current_staff, key="real_in")
+            real = st.selectbox("Realizado por *", ["Seleccione..."] + current_staff, key=f"real_in_{f_id}")
         
         # Filtrar el seleccionado en 'Realizado' para que no se repita en 'Controlado'
         cont_options = ["Seleccione..."] + [s for s in current_staff if s != real]
         with c_st2: 
-            cont = st.selectbox("Controlado por *", cont_options, key="cont_in")
+            cont = st.selectbox("Controlado por *", cont_options, key=f"cont_in_{f_id}")
 
     if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
         if not sku or not lote or not prov or real=="Seleccione...":
@@ -178,16 +180,9 @@ with tab1:
                     st.session_state.current_label = entry
                     st.session_state.show_label = True
                     
-                    # --- LIMPIEZA TOTAL DEL FORMULARIO ---
-                    keys_to_reset = [
-                        "sku_in", "lote_in", "vto_in", "ori_in", "pres_in", 
-                        "udm_in", "cant_in", "bul_in", "prov_in", "rem_in", 
-                        "real_in", "cont_in", "oc_in"
-                        # No reseteamos 'planta_in' para que la planta quede fija si cargan varios seguidos
-                    ]
-                    for rkey in keys_to_reset:
-                        if rkey in st.session_state:
-                            del st.session_state[rkey]
+                    # --- REINICIO TOTAL DEL FORMULARIO ---
+                    # Incrementamos el form_id para que todos los widgets tengan llaves nuevas
+                    st.session_state.form_id += 1
                     
                     st.session_state.just_saved = True
                     st.rerun()
