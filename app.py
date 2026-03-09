@@ -377,7 +377,10 @@ if st.session_state.get('show_label'):
     # --- FORMATEO DE DATOS PARA EL RÓTULO ---
     def clean_val(val):
         if val is None or str(val) == 'nan' or str(val).lower() == 'seleccione...': return ""
-        return str(val).split(".")[0] if isinstance(val, (float, int)) and ".0" in str(val) else str(val)
+        # Quitar decimales si es un número (ej: 25688.0 -> 25688)
+        s = str(val)
+        if "." in s and s.split(".")[-1] == "0": return s.split(".")[0]
+        return s
 
     def format_dt(val):
         if not val or str(val) == 'nan': return ""
@@ -394,8 +397,16 @@ if st.session_state.get('show_label'):
 
     fecha_f = format_dt(d.get('Fecha'))
     vto_f = format_dt(d.get('Vto'))
-    oc_f = clean_val(d.get('OC'))
+    
+    # Fallback para número de recepción: si está vacío, intentar extraerlo del Nº de Análisis
     recepcion_f = clean_val(d.get('recepcion_num'))
+    if not recepcion_f:
+        an = str(d.get('Número de Análisis', ''))
+        if "/" in an:
+            try:
+                recepcion_f = str(int(an.split("/")[0]))
+            except: pass
+    
     realizado_f = clean_val(d.get('realizado_por'))
     controlado_f = clean_val(d.get('controlado_por'))
 
@@ -532,8 +543,8 @@ if st.session_state.get('show_label'):
                         <td>{total_recepcion:.2f} {d['UDM']}</td>
                     </tr>
                     <tr>
-                        <td class="field-name">Remito / OC</td>
-                        <td class="small-text">{d['Número de Remito']} / {oc_f}</td>
+                        <td class="field-name">Nº de Remito</td>
+                        <td class="small-text">{d['Número de Remito']}</td>
                         <td class="field-name">Nº de recepción</td>
                         <td>{recepcion_f}</td>
                     </tr>
