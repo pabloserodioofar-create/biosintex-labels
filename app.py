@@ -211,9 +211,10 @@ with tab2:
             elif "controlado" in c_low: rename_map[col] = "controlado_por"
             elif "recep" in c_low: rename_map[col] = "recepcion_num"
             elif i == 13: rename_map[col] = "Planta"
-            elif i == 14: rename_map[col] = "recepcion_num"
+            elif i == 14: rename_map[col] = "OC"
             elif i == 15: rename_map[col] = "realizado_por"
             elif i == 16: rename_map[col] = "controlado_por"
+            elif i == 17: rename_map[col] = "recepcion_num"
         
         df_hist = df_hist.rename(columns=rename_map)
 
@@ -253,6 +254,7 @@ with tab2:
                 "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado"]),
                 "UDM": st.column_config.SelectboxColumn("UDM", options=["KG", "UN", "L", "M"]),
                 "Número de Remito": st.column_config.TextColumn("Nº Remito"),
+                "OC": st.column_config.TextColumn("Nº OC"),
                 "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
                 "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
                 "recepcion_num": st.column_config.TextColumn("Nº Recepción"),
@@ -331,7 +333,8 @@ with tab2:
                 'Vto': clean(selected_row.get('Vto', '')),
                 'Proveedor': clean(selected_row.get('Proveedor', '')), 
                 'Número de Remito': clean(selected_row.get('Número de Remito', selected_row.get('Numero de Remito', ''))),
-                'Presentacion': clean(selected_row.get('Presentacion', selected_row.get('Presentación', ''))),
+                'Presentacion': clean(selected_row.get('Presentacion', clean(selected_row.get('Presentación', '')))),
+                'OC': clean(selected_row.get('OC', '')),
                 'recepcion_num': clean(selected_row.get('recepcion_num', '')), 
                 'realizado_por': clean(selected_row.get('realizado_por', '')), 
                 'controlado_por': clean(selected_row.get('controlado_por', ''))
@@ -367,6 +370,7 @@ if st.session_state.get('show_label'):
 
     fecha_f = format_dt(d.get('Fecha'))
     vto_f = format_dt(d.get('Vto'))
+    oc_f = clean_val(d.get('OC'))
     recepcion_f = clean_val(d.get('recepcion_num'))
     realizado_f = clean_val(d.get('realizado_por'))
     controlado_f = clean_val(d.get('controlado_por'))
@@ -504,8 +508,8 @@ if st.session_state.get('show_label'):
                         <td>{total_recepcion:.2f} {d['UDM']}</td>
                     </tr>
                     <tr>
-                        <td class="field-name">Nº de Remito</td>
-                        <td class="small-text">{d['Número de Remito']}</td>
+                        <td class="field-name">Remito / OC</td>
+                        <td class="small-text">{d['Número de Remito']} / {oc_f}</td>
                         <td class="field-name">Nº de recepción</td>
                         <td>{recepcion_f}</td>
                     </tr>
