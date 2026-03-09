@@ -459,9 +459,9 @@ if st.session_state.get('show_label'):
                     </tr>
                     <tr>
                         <td class="field-name">Realizado por</td>
-                        <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
+                        <td class="label-text" style="font-size:9px;">{d.get('realizado_por', '') if d.get('realizado_por') != "Seleccione..." else ""}</td>
                         <td class="field-name">Controlado por</td>
-                        <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
+                        <td class="label-text" style="font-size:9px;">{d.get('controlado_por', '') if d.get('controlado_por') != "Seleccione..." else ""}</td>
                     </tr>
                     <tr>
                         <td class="small-text">DP-003-SOP Vigente</td>
