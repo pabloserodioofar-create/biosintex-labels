@@ -324,95 +324,152 @@ if st.session_state.get('show_label'):
     # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
     c_p1, c_p2 = st.columns([1,1])
     with c_p1:
-        print_mode = st.radio("Modo de impresión:", ["Bulto individual", "Todos los bultos"], horizontal=True, key="print_mode_radio")
+        print_mode = st.radio("Modo de impresión:", ["Bulto individual", "Distribución de bultos"], horizontal=True, key="print_mode_radio")
     
-    cant_sugerida = d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0
+    total_recepcion = float(d['Cantidad'])
+    cant_bultos_total = int(d['Cantidad Bultos'])
+    cant_sugerida = total_recepcion / cant_bultos_total if cant_bultos_total else 0
     
+    bulto_n_list = []
+    cant_list = []
+    allow_print = True
+
     if print_mode == "Bulto individual":
         c_i1, c_i2 = st.columns(2)
         with c_i1:
-            bulto_n_list = [st.number_input("Imprimir Bulto Nº", min_value=1, max_value=d['Cantidad Bultos'], value=1)]
+            b_n = st.number_input("Imprimir Bulto Nº", min_value=1, max_value=cant_bultos_total, value=1)
+            bulto_n_list = [b_n]
         with c_i2:
             cant_bulto = st.number_input("Cantidad para este bulto", value=float(cant_sugerida), step=0.01)
             cant_list = [cant_bulto]
     else:
-        bulto_n_list = list(range(1, d['Cantidad Bultos'] + 1))
-        cant_list = [cant_sugerida] * d['Cantidad Bultos']
-        st.info(f"Se generarán {d['Cantidad Bultos']} rótulos, cada uno con {cant_sugerida:.2f} {d['UDM']}")
+        st.info(f"Configuración de bultos (Total: {total_recepcion} {d['UDM']} en {cant_bultos_total} bultos)")
+        
+        # Inicializar estado para la configuración de rangos
+        if 'bulto_ranges' not in st.session_state or st.session_state.get('last_an_id') != d['Número de Análisis']:
+            st.session_state.bulto_ranges = [{"desde": 1, "hasta": cant_bultos_total, "peso": cant_sugerida}]
+            st.session_state.last_an_id = d['Número de Análisis']
+        
+        # Editor de rangos
+        edited_ranges = st.data_editor(
+            st.session_state.bulto_ranges,
+            num_rows="dynamic",
+            column_config={
+                "desde": st.column_config.NumberColumn("Desde Bulto", min_value=1, max_value=cant_bultos_total, required=True),
+                "hasta": st.column_config.NumberColumn("Hasta Bulto", min_value=1, max_value=cant_bultos_total, required=True),
+                "peso": st.column_config.NumberColumn("Peso por Bulto", min_value=0.0, format="%.2f", required=True),
+            },
+            key="ranges_editor"
+        )
+        st.session_state.bulto_ranges = edited_ranges
+
+        # Validar y Expandir los bultos
+        temp_bultos = {} # Bulto ID -> Peso
+        total_acumulado = 0.0
+        
+        for r in edited_ranges:
+            if not r.get("desde") or not r.get("hasta") or r.get("peso") is None: continue
+            for i in range(int(r["desde"]), int(r["hasta"]) + 1):
+                if i > cant_bultos_total: continue
+                # Si un bulto se repite, el último rango definido gana
+                temp_bultos[i] = float(r["peso"])
+
+        # Generar listas finales
+        for i in range(1, cant_bultos_total + 1):
+            peso = temp_bultos.get(i, 0.0)
+            bulto_n_list.append(i)
+            cant_list.append(peso)
+            total_acumulado += peso
+
+        # Mostrar resumen y validación
+        diff = total_recepcion - total_acumulado
+        c_res1, c_res2 = st.columns(2)
+        with c_res1:
+            st.metric("Total Configurado", f"{total_acumulado:.2f} {d['UDM']}", delta=f"{diff:.2f}" if abs(diff) > 0.01 else None)
+        with c_res2:
+            if abs(diff) > 0.01:
+                st.error(f"⚠️ La suma de bultos ({total_acumulado:.2f}) no coincide con el total de la recepción ({total_recepcion:.2f}).")
+                allow_print = False
+            elif len(temp_bultos) < cant_bultos_total:
+                st.warning(f"⚠️ Faltan configurar {cant_bultos_total - len(temp_bultos)} bultos.")
+                allow_print = False
+            else:
+                st.success("✅ Distribución correcta.")
 
     # Diseño de Rótulo 10x10 cm aproximado para impresión
     labels_html = ""
-    for idx, b_n in enumerate(bulto_n_list):
-        c_bulto = cant_list[idx]
-        labels_html += f"""
-        <div class="label-container" id="printable-label-{b_n}">
-            <table>
-                <tr>
-                    <td class="field-name">Nº de Análisis</td>
-                    <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
-                    <td class="logo-box"><b style="color:#0056b3; font-size:16px;">Biosintex</b></td>
-                </tr>
-                <tr>
-                    <td class="field-name">Insumo / Producto</td>
-                    <td colspan="3" class="label-text">{d.get('Descripción de Producto', '')}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Presentación</td>
-                    <td colspan="3" class="label-text">{d.get('Presentacion', '')}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Fecha</td>
-                    <td colspan="3">{d['Fecha']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Nº de lote</td>
-                    <td>{d['Lote']}</td>
-                    <td class="field-name">Vto.:</td>
-                    <td>{d['Vto']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Código interno</td>
-                    <td colspan="3" class="label-text">{d['SKU']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Origen</td>
-                    <td colspan="3" class="label-text">{d.get('Origen', '')}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Proveedor</td>
-                    <td colspan="3" class="label-text">{d['Proveedor']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Bulto Nº</td>
-                    <td style="background:#ddd; font-weight:bold;">{b_n}</td>
-                    <td class="field-name">de</td>
-                    <td style="background:#ddd; font-weight:bold;">{d['Cantidad Bultos']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Cantidad por bulto</td>
-                    <td style="font-weight:bold;">{c_bulto:.2f} {d['UDM']}</td>
-                    <td class="field-name">Total</td>
-                    <td>{d['Cantidad']} {d['UDM']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Nº de Remito</td>
-                    <td class="small-text">{d['Número de Remito']}</td>
-                    <td class="field-name">Nº de recepción</td>
-                    <td>{d['recepcion_num']}</td>
-                </tr>
-                <tr>
-                    <td class="field-name">Realizado por</td>
-                    <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
-                    <td class="field-name">Controlado por</td>
-                    <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
-                </tr>
-                <tr>
-                    <td class="small-text">DP-003-SOP Vigente</td>
-                    <td colspan="3" class="cuarentena">CUARENTENA</td>
-                </tr>
-            </table>
-        </div>
-        """
+    if allow_print:
+        for idx, b_n in enumerate(bulto_n_list):
+            c_bulto = cant_list[idx]
+            labels_html += f"""
+            <div class="label-container">
+                <table>
+                    <tr>
+                        <td class="field-name">Nº de Análisis</td>
+                        <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
+                        <td class="logo-box"><b style="color:#0056b3; font-size:16px;">Biosintex</b></td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Insumo / Producto</td>
+                        <td colspan="3" class="label-text">{d.get('Descripción de Producto', '')}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Presentación</td>
+                        <td colspan="3" class="label-text">{d.get('Presentacion', '')}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Fecha</td>
+                        <td colspan="3">{d['Fecha']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Nº de lote</td>
+                        <td>{d['Lote']}</td>
+                        <td class="field-name">Vto.:</td>
+                        <td>{d['Vto']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Código interno</td>
+                        <td colspan="3" class="label-text">{d['SKU']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Origen</td>
+                        <td colspan="3" class="label-text">{d.get('Origen', '')}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Proveedor</td>
+                        <td colspan="3" class="label-text">{d['Proveedor']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Bulto Nº</td>
+                        <td style="background:#ddd; font-weight:bold;">{b_n}</td>
+                        <td class="field-name">de</td>
+                        <td style="background:#ddd; font-weight:bold;">{cant_bultos_total}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Cantidad por bulto</td>
+                        <td style="font-weight:bold;">{c_bulto:.2f} {d['UDM']}</td>
+                        <td class="field-name">Total</td>
+                        <td>{total_recepcion:.2f} {d['UDM']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Nº de Remito</td>
+                        <td class="small-text">{d['Número de Remito']}</td>
+                        <td class="field-name">Nº de recepción</td>
+                        <td>{d['recepcion_num']}</td>
+                    </tr>
+                    <tr>
+                        <td class="field-name">Realizado por</td>
+                        <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
+                        <td class="field-name">Controlado por</td>
+                        <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
+                    </tr>
+                    <tr>
+                        <td class="small-text">DP-003-SOP Vigente</td>
+                        <td colspan="3" class="cuarentena">CUARENTENA</td>
+                    </tr>
+                </table>
+            </div>
+            """
 
     full_html = f"""
     <style>
@@ -459,12 +516,13 @@ if st.session_state.get('show_label'):
         .small-text {{ font-size: 9px; }}
     </style>
     <div id="printable-area">
-        {labels_html}
+        {labels_html if allow_print else '<h3 style="color:red; text-align:center;">⚠️ La configuración de bultos es inválida. Revisa el peso total.</h3>'}
     </div>
     <div class="no-print" style="text-align:center; margin-top:20px;">
-        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR ETIQUETAS</button>
+        <button {"" if allow_print else "disabled"} onclick="window.print()" style="padding:15px 30px; background:{'green' if allow_print else 'gray'}; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR ETIQUETAS</button>
         <p style="color:gray; font-size:12px; margin-top:5px;">Se imprimirán {len(bulto_n_list)} rótulo(s).</p>
     </div>
     """
-    st.components.v1.html(full_html, height=600 if print_mode == "Bulto individual" else 800, scrolling=True)
+    st.components.v1.html(full_html, height=600 if print_mode == "Bulto individual" else 900, scrolling=True)
+
 
