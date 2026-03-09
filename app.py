@@ -211,10 +211,9 @@ with tab2:
             elif "controlado" in c_low: rename_map[col] = "controlado_por"
             elif "recep" in c_low: rename_map[col] = "recepcion_num"
             elif i == 13: rename_map[col] = "Planta"
-            elif i == 14: rename_map[col] = "OC"
+            elif i == 14: rename_map[col] = "recepcion_num"
             elif i == 15: rename_map[col] = "realizado_por"
             elif i == 16: rename_map[col] = "controlado_por"
-            elif i == 17: rename_map[col] = "recepcion_num"
         
         df_hist = df_hist.rename(columns=rename_map)
 
