@@ -202,6 +202,22 @@ with tab2:
     if 'history' in st.session_state and not st.session_state.history.empty:
         df_hist = st.session_state.history.copy()
         
+        # --- NORMALIZACIÓN DE NOMBRES DE COLUMNAS ---
+        # Mapeamos columnasUnnamed o con nombres variables a nuestras claves internas
+        rename_map = {}
+        for i, col in enumerate(df_hist.columns):
+            c_low = str(col).lower()
+            if "realizado" in c_low: rename_map[col] = "realizado_por"
+            elif "controlado" in c_low: rename_map[col] = "controlado_por"
+            elif "recep" in c_low: rename_map[col] = "recepcion_num"
+            elif i == 13: rename_map[col] = "Planta"
+            elif i == 14: rename_map[col] = "OC"
+            elif i == 15: rename_map[col] = "realizado_por"
+            elif i == 16: rename_map[col] = "controlado_por"
+            elif i == 17: rename_map[col] = "recepcion_num"
+        
+        df_hist = df_hist.rename(columns=rename_map)
+
         # Exportar a Excel
         import io
         output = io.BytesIO()
@@ -240,6 +256,7 @@ with tab2:
                 "Número de Remito": st.column_config.TextColumn("Nº Remito"),
                 "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
                 "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
+                "recepcion_num": st.column_config.TextColumn("Nº Recepción"),
             }
         )
 
@@ -297,17 +314,28 @@ with tab2:
         sel_an = st.selectbox("Seleccione Análisis para reimprimir:", edited_df["Número de Análisis"].tolist())
         if st.button("🔍 Cargar para Impresión"):
             selected_row = edited_df[edited_df["Número de Análisis"] == sel_an].iloc[0].to_dict()
-            # Mapear nombres de columnas si vienen con caracteres especiales del Excel
+            
+            # Helper para limpiezas rápidas
+            def clean(val): return "" if pd.isna(val) or str(val) == 'nan' else val
+
+            # Mapear nombres de columnas asegurando que las claves existan para el rótulo
             re_entry = {
-                'Fecha': selected_row.get('Fecha', ''), 'SKU': selected_row.get('SKU', ''), 
-                'Descripción de Producto': selected_row.get('Descripción de Producto', selected_row.get('Descripcion de Producto', '')),
-                'Número de Análisis': selected_row.get('Número de Análisis', selected_row.get('Numero de Analisis', '')),
-                'Lote': selected_row.get('Lote', ''), 'Origen': selected_row.get('Origen', ''),
-                'Cantidad': selected_row.get('Cantidad', 0), 'UDM': selected_row.get('UDM', ''),
-                'Cantidad Bultos': int(selected_row.get('Cantidad Bultos', 1)), 'Vto': selected_row.get('Vto', ''),
-                'Proveedor': selected_row.get('Proveedor', ''), 'Número de Remito': selected_row.get('Número de Remito', selected_row.get('Numero de Remito', '')),
-                'Presentacion': selected_row.get('Presentacion', selected_row.get('Presentación', '')),
-                'recepcion_num': selected_row.get('recepcion_num', ''), 'realizado_por': selected_row.get('realizado_por', ''), 'controlado_por': selected_row.get('controlado_por', '')
+                'Fecha': clean(selected_row.get('Fecha', '')), 
+                'SKU': clean(selected_row.get('SKU', '')), 
+                'Descripción de Producto': clean(selected_row.get('Descripción de Producto', selected_row.get('Descripcion de Producto', ''))),
+                'Número de Análisis': clean(selected_row.get('Número de Análisis', selected_row.get('Numero de Analisis', ''))),
+                'Lote': clean(selected_row.get('Lote', '')), 
+                'Origen': clean(selected_row.get('Origen', '')),
+                'Cantidad': selected_row.get('Cantidad', 0), 
+                'UDM': clean(selected_row.get('UDM', '')),
+                'Cantidad Bultos': int(selected_row.get('Cantidad Bultos', 1)), 
+                'Vto': clean(selected_row.get('Vto', '')),
+                'Proveedor': clean(selected_row.get('Proveedor', '')), 
+                'Número de Remito': clean(selected_row.get('Número de Remito', selected_row.get('Numero de Remito', ''))),
+                'Presentacion': clean(selected_row.get('Presentacion', selected_row.get('Presentación', ''))),
+                'recepcion_num': clean(selected_row.get('recepcion_num', '')), 
+                'realizado_por': clean(selected_row.get('realizado_por', '')), 
+                'controlado_por': clean(selected_row.get('controlado_por', ''))
             }
             st.session_state.current_label = re_entry
             st.session_state.show_label = True
@@ -319,6 +347,31 @@ if st.session_state.get('show_label'):
     d = st.session_state.current_label
     st.divider()
     if st.button("❌ Cerrar"): st.session_state.show_label = False; st.rerun()
+
+    # --- FORMATEO DE DATOS PARA EL RÓTULO ---
+    def clean_val(val):
+        if val is None or str(val) == 'nan' or str(val).lower() == 'seleccione...': return ""
+        return str(val).split(".")[0] if isinstance(val, (float, int)) and ".0" in str(val) else str(val)
+
+    def format_dt(val):
+        if not val or str(val) == 'nan': return ""
+        try:
+            if isinstance(val, (datetime, pd.Timestamp)):
+                return val.strftime("%d/%m/%Y")
+            s = str(val)
+            if " " in s: s = s.split(" ")[0] # Quitar ' 00:00:00'
+            if "-" in s: # YYYY-MM-DD
+                p = s.split("-")
+                if len(p) == 3 and len(p[0]) == 4: return f"{p[2]}/{p[1]}/{p[0]}"
+            return s
+        except: return str(val)
+
+    fecha_f = format_dt(d.get('Fecha'))
+    vto_f = format_dt(d.get('Vto'))
+    recepcion_f = clean_val(d.get('recepcion_num'))
+    realizado_f = clean_val(d.get('realizado_por'))
+    controlado_f = clean_val(d.get('controlado_por'))
+
     
     # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
     # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
@@ -419,13 +472,13 @@ if st.session_state.get('show_label'):
                     </tr>
                     <tr>
                         <td class="field-name">Fecha</td>
-                        <td colspan="3">{d['Fecha']}</td>
+                        <td colspan="3">{fecha_f}</td>
                     </tr>
                     <tr>
                         <td class="field-name">Nº de lote</td>
                         <td>{d['Lote']}</td>
                         <td class="field-name">Vto.:</td>
-                        <td>{d['Vto']}</td>
+                        <td>{vto_f}</td>
                     </tr>
                     <tr>
                         <td class="field-name">Código interno</td>
@@ -455,13 +508,13 @@ if st.session_state.get('show_label'):
                         <td class="field-name">Nº de Remito</td>
                         <td class="small-text">{d['Número de Remito']}</td>
                         <td class="field-name">Nº de recepción</td>
-                        <td>{d['recepcion_num']}</td>
+                        <td>{recepcion_f}</td>
                     </tr>
                     <tr>
                         <td class="field-name">Realizado por</td>
-                        <td class="label-text" style="font-size:9px;">{d.get('realizado_por', '') if d.get('realizado_por') != "Seleccione..." else ""}</td>
+                        <td class="label-text" style="font-size:9px;">{realizado_f}</td>
                         <td class="field-name">Controlado por</td>
-                        <td class="label-text" style="font-size:9px;">{d.get('controlado_por', '') if d.get('controlado_por') != "Seleccione..." else ""}</td>
+                        <td class="label-text" style="font-size:9px;">{controlado_f}</td>
                     </tr>
                     <tr>
                         <td class="small-text">DP-003-SOP Vigente</td>
