@@ -321,33 +321,119 @@ if st.session_state.get('show_label'):
     if st.button("❌ Cerrar"): st.session_state.show_label = False; st.rerun()
     
     # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
-    c_p1, c_p2 = st.columns(2)
+    # --- CONTROLES DE IMPRESIÓN (Solo visibles en pantalla) ---
+    c_p1, c_p2 = st.columns([1,1])
     with c_p1:
-        bulto_n = st.number_input("Imprimir Bulto Nº", min_value=1, max_value=d['Cantidad Bultos'], value=1)
-    with c_p2:
-        # Sugerir cantidad normal, pero permitir editar por bulto parcial
-        cant_sugerida = d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0
-        cant_bulto = st.number_input("Cantidad para este bulto", value=float(cant_sugerida), step=0.01)
+        print_mode = st.radio("Modo de impresión:", ["Bulto individual", "Todos los bultos"], horizontal=True, key="print_mode_radio")
+    
+    cant_sugerida = d['Cantidad'] / d['Cantidad Bultos'] if d['Cantidad Bultos'] else 0
+    
+    if print_mode == "Bulto individual":
+        c_i1, c_i2 = st.columns(2)
+        with c_i1:
+            bulto_n_list = [st.number_input("Imprimir Bulto Nº", min_value=1, max_value=d['Cantidad Bultos'], value=1)]
+        with c_i2:
+            cant_bulto = st.number_input("Cantidad para este bulto", value=float(cant_sugerida), step=0.01)
+            cant_list = [cant_bulto]
+    else:
+        bulto_n_list = list(range(1, d['Cantidad Bultos'] + 1))
+        cant_list = [cant_sugerida] * d['Cantidad Bultos']
+        st.info(f"Se generarán {d['Cantidad Bultos']} rótulos, cada uno con {cant_sugerida:.2f} {d['UDM']}")
 
     # Diseño de Rótulo 10x10 cm aproximado para impresión
-    html = f"""
+    labels_html = ""
+    for idx, b_n in enumerate(bulto_n_list):
+        c_bulto = cant_list[idx]
+        labels_html += f"""
+        <div class="label-container" id="printable-label-{b_n}">
+            <table>
+                <tr>
+                    <td class="field-name">Nº de Análisis</td>
+                    <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
+                    <td class="logo-box"><b style="color:#0056b3; font-size:16px;">Biosintex</b></td>
+                </tr>
+                <tr>
+                    <td class="field-name">Insumo / Producto</td>
+                    <td colspan="3" class="label-text">{d.get('Descripción de Producto', '')}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Presentación</td>
+                    <td colspan="3" class="label-text">{d.get('Presentacion', '')}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Fecha</td>
+                    <td colspan="3">{d['Fecha']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Nº de lote</td>
+                    <td>{d['Lote']}</td>
+                    <td class="field-name">Vto.:</td>
+                    <td>{d['Vto']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Código interno</td>
+                    <td colspan="3" class="label-text">{d['SKU']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Origen</td>
+                    <td colspan="3" class="label-text">{d.get('Origen', '')}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Proveedor</td>
+                    <td colspan="3" class="label-text">{d['Proveedor']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Bulto Nº</td>
+                    <td style="background:#ddd; font-weight:bold;">{b_n}</td>
+                    <td class="field-name">de</td>
+                    <td style="background:#ddd; font-weight:bold;">{d['Cantidad Bultos']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Cantidad por bulto</td>
+                    <td style="font-weight:bold;">{c_bulto:.2f} {d['UDM']}</td>
+                    <td class="field-name">Total</td>
+                    <td>{d['Cantidad']} {d['UDM']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Nº de Remito</td>
+                    <td class="small-text">{d['Número de Remito']}</td>
+                    <td class="field-name">Nº de recepción</td>
+                    <td>{d['recepcion_num']}</td>
+                </tr>
+                <tr>
+                    <td class="field-name">Realizado por</td>
+                    <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
+                    <td class="field-name">Controlado por</td>
+                    <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
+                </tr>
+                <tr>
+                    <td class="small-text">DP-003-SOP Vigente</td>
+                    <td colspan="3" class="cuarentena">CUARENTENA</td>
+                </tr>
+            </table>
+        </div>
+        """
+
+    full_html = f"""
     <style>
         @media print {{
             .no-print {{ display: none !important; }}
             @page {{ size: 100mm 100mm; margin: 0; }}
             body {{ margin: 0; }}
+            .label-container {{ page-break-after: always; }}
         }}
         .label-container {{
-            width: 380px;
-            height: 380px;
+            width: 370px;
+            height: 370px;
             border: 2px solid black;
             font-family: Arial, sans-serif;
             font-size: 11px;
-            margin: auto;
+            margin: 10px auto;
             background: white;
             color: black;
             display: flex;
             flex-direction: column;
+            page-break-after: always;
         }}
         table {{
             width: 100%;
@@ -372,76 +458,13 @@ if st.session_state.get('show_label'):
         .logo-box {{ width: 30%; }}
         .small-text {{ font-size: 9px; }}
     </style>
-    <div class="label-container" id="printable-label">
-        <table>
-            <tr>
-                <td class="field-name">Nº de Análisis</td>
-                <td class="header-val" colspan="2">{d['Número de Análisis']}</td>
-                <td class="logo-box"><b style="color:#0056b3; font-size:16px;">Biosintex</b></td>
-            </tr>
-            <tr>
-                <td class="field-name">Insumo / Producto</td>
-                <td colspan="3" class="label-text">{d.get('Descripción de Producto', '')}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Presentación</td>
-                <td colspan="3" class="label-text">{d.get('Presentacion', '')}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Fecha</td>
-                <td colspan="3">{d['Fecha']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Nº de lote</td>
-                <td>{d['Lote']}</td>
-                <td class="field-name">Vto.:</td>
-                <td>{d['Vto']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Código interno</td>
-                <td colspan="3" class="label-text">{d['SKU']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Origen</td>
-                <td colspan="3" class="label-text">{d.get('Origen', '')}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Proveedor</td>
-                <td colspan="3" class="label-text">{d['Proveedor']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Bulto Nº</td>
-                <td style="background:#ddd; font-weight:bold;">{bulto_n}</td>
-                <td class="field-name">de</td>
-                <td style="background:#ddd; font-weight:bold;">{d['Cantidad Bultos']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Cantidad por bulto</td>
-                <td style="font-weight:bold;">{cant_bulto:.2f} {d['UDM']}</td>
-                <td class="field-name">Total</td>
-                <td>{d['Cantidad']} {d['UDM']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Nº de Remito</td>
-                <td class="small-text">{d['Número de Remito']}</td>
-                <td class="field-name">Nº de recepción</td>
-                <td>{d['recepcion_num']}</td>
-            </tr>
-            <tr>
-                <td class="field-name">Realizado por</td>
-                <td class="label-text" style="font-size:9px;">{d['realizado_por'] if d['realizado_por'] != "Seleccione..." else ""}</td>
-                <td class="field-name">Controlado por</td>
-                <td class="label-text" style="font-size:9px;">{d['controlado_por'] if d['controlado_por'] != "Seleccione..." else ""}</td>
-            </tr>
-            <tr>
-                <td class="small-text">DP-003-SOP Vigente</td>
-                <td colspan="3" class="cuarentena">CUARENTENA</td>
-            </tr>
-        </table>
+    <div id="printable-area">
+        {labels_html}
     </div>
     <div class="no-print" style="text-align:center; margin-top:20px;">
-        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR ESTE RÓTULO</button>
-        <p style="color:gray; font-size:12px; margin-top:5px;">Configura el bulto y cantidad arriba antes de imprimir.</p>
+        <button onclick="window.print()" style="padding:15px 30px; background:green; color:white; font-weight:bold; border:none; border-radius:5px; cursor:pointer; font-size:16px;">🖨️ IMPRIMIR ETIQUETAS</button>
+        <p style="color:gray; font-size:12px; margin-top:5px;">Se imprimirán {len(bulto_n_list)} rótulo(s).</p>
     </div>
     """
-    st.components.v1.html(html, height=650)
+    st.components.v1.html(full_html, height=600 if print_mode == "Bulto individual" else 800, scrolling=True)
+
