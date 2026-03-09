@@ -202,21 +202,40 @@ with tab2:
     if 'history' in st.session_state and not st.session_state.history.empty:
         df_hist = st.session_state.history.copy()
         
-        # --- NORMALIZACIÓN DE NOMBRES DE COLUMNAS ---
-        # Mapeamos columnasUnnamed o con nombres variables a nuestras claves internas
+        # --- NORMALIZACIÓN DE NOMBRES DE COLUMNAS (Sin crear duplicados) ---
+        target_names = ["realizado_por", "controlado_por", "recepcion_num", "Planta", "OC"]
         rename_map = {}
-        for i, col in enumerate(df_hist.columns):
+        cols = list(df_hist.columns)
+        
+        # Primero detectamos qué nombres "buenos" YA existen
+        existing_good = [c for c in cols if c in target_names]
+        
+        for i, col in enumerate(cols):
             c_low = str(col).lower()
-            if "realizado" in c_low: rename_map[col] = "realizado_por"
-            elif "controlado" in c_low: rename_map[col] = "controlado_por"
-            elif "recep" in c_low: rename_map[col] = "recepcion_num"
-            elif i == 13: rename_map[col] = "Planta"
-            elif i == 14: rename_map[col] = "OC"
-            elif i == 15: rename_map[col] = "realizado_por"
-            elif i == 16: rename_map[col] = "controlado_por"
-            elif i == 17: rename_map[col] = "recepcion_num"
+            new_name = None
+            
+            # Solo intentamos renombrar si es un "Unnamed" o no es uno de nuestros nombres buenos
+            if "unnamed" in c_low:
+                if i == 13: new_name = "Planta"
+                elif i == 14: new_name = "OC"
+                elif i == 15: new_name = "realizado_por"
+                elif i == 16: new_name = "controlado_por"
+                elif i == 17: new_name = "recepcion_num"
+            
+            # Si encontramos un nombre descriptivo pero que no es exactamente nuestra clave
+            elif "realizado" in c_low and "realizado_por" not in existing_good: new_name = "realizado_por"
+            elif "controlado" in c_low and "controlado_por" not in existing_good: new_name = "controlado_por"
+            elif "recep" in c_low and "recepcion_num" not in existing_good: new_name = "recepcion_num"
+            
+            if new_name and new_name not in rename_map.values() and new_name not in existing_good:
+                rename_map[col] = new_name
         
         df_hist = df_hist.rename(columns=rename_map)
+
+        # Forzar tipos string para evitar errores en data_editor con NaNs o tipos mezclados
+        for c in ["SKU", "Descripción de Producto", "Proveedor", "Presentacion", "Planta", "Origen", "UDM", "Número de Remito", "OC", "realizado_por", "controlado_por", "recepcion_num"]:
+            if c in df_hist.columns:
+                df_hist[c] = df_hist[c].astype(str).replace('nan', '')
 
         # Exportar a Excel
         import io
@@ -227,7 +246,7 @@ with tab2:
         
         st.info("💡 Haz doble clic en una celda para editar (excepto campos clave).")
         
-        # Preparar listas para los selectores del editor (vienen de la base)
+        # Preparar listas para los selectores del editor (asegurando strings)
         sku_list = sorted(list(set([str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')])))
         desc_list = sorted(list(set([str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')])))
         
@@ -238,6 +257,11 @@ with tab2:
                 if name and str(name) != 'nan': prov_list.append(str(name).strip())
         prov_list = sorted(list(set(prov_list)))
 
+        # Asegurar que los valores actuales estén en las opciones o vacíos
+        # para evitar errores de SelectboxColumn en Streamlit
+        staff_options = STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]
+        udm_options = ["KG", "UN", "L", "M", ""]
+        
         # Editor de datos con columnas configuradas como Selectbox
         edited_df = st.data_editor(
             df_hist, 
@@ -246,17 +270,17 @@ with tab2:
             hide_index=True, 
             disabled=["Número de Análisis", "Fecha", "recepcion_num"],
             column_config={
-                "SKU": st.column_config.SelectboxColumn("SKU", options=sku_list, required=True),
+                "SKU": st.column_config.SelectboxColumn("SKU", options=sku_list),
                 "Descripción de Producto": st.column_config.SelectboxColumn("Descripción de Producto", options=desc_list),
                 "Proveedor": st.column_config.SelectboxColumn("Proveedor", options=prov_list),
                 "Presentacion": st.column_config.SelectboxColumn("Presentación", options=PRES_LIST),
-                "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera"], required=True),
-                "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado"]),
-                "UDM": st.column_config.SelectboxColumn("UDM", options=["KG", "UN", "L", "M"]),
+                "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera", ""]),
+                "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado", ""]),
+                "UDM": st.column_config.SelectboxColumn("UDM", options=udm_options),
                 "Número de Remito": st.column_config.TextColumn("Nº Remito"),
                 "OC": st.column_config.TextColumn("Nº OC"),
-                "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
-                "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=STAFF_BY_PLANT["Barracas"] + STAFF_BY_PLANT["Pibera"]),
+                "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=staff_options),
+                "controlado_por": st.column_config.SelectboxColumn("Controlado por", options=staff_options),
                 "recepcion_num": st.column_config.TextColumn("Nº Recepción"),
             }
         )
