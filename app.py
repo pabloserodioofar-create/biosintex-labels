@@ -14,11 +14,12 @@ st.set_page_config(page_title="Gestión Biosintex", layout="wide")
 
 # --- CONSTANTES ---
 PRES_LIST = [
-    "CAJAS", "BOLSA BLANCA", "BOBINA", "TAMBOR VERDE", "BOLSA", 
-    "BOBINAS", "CAJAS BLANCAS", "TAMBORES VERDES", "BIDON AZUL", 
-    "BIDON", "CUETE CARTON", "BOLSA NEGRA", "BIDON AMARILLO", 
-    "TAMBOR", "BALDE", "TAMBOR AZUL", "CUETE", "CAJA DE CARTON", 
-    "CAJAS PLASTICAS", "BOLSAS DE CARTON", "OTROS"
+    "Cajas", "Bolsa blanca", "Bobina", "Tambor verde", "Bolsa", 
+    "Bobinas", "Cajas blancas", "Tambores verdes", "Bidón azul", 
+    "Bidón", "Bidón blanco", "Bidón negro", "Cuñete de cartón", 
+    "Bolsa negra", "Bidón amarillo", "Tambor", "Balde", "Tambor azul", 
+    "Cuñete", "Cuñete azul", "Cuñete plástico", "Caja de cartón", 
+    "Cajas plásticas", "Bolsas de cartón", "Otros"
 ]
 
 STAFF_BY_PLANT = {
@@ -93,11 +94,8 @@ def search_prov(q):
 st.title(f"📦 Recepción Biosintex ({st.session_state.env})")
 
 with st.sidebar:
-    st.header("⚙️ Ajustes")
-    env_sidebar = st.radio("Entorno:", ["Producción", "Pruebas"], index=0 if st.session_state.env=="Producción" else 1)
-    if env_sidebar != st.session_state.env:
-        st.session_state.env = env_sidebar
-        st.rerun()
+    # El entorno se fuerza a Producción por solicitud del usuario
+    st.session_state.env = "Producción"
     st.button("🔄 Sincronizar", on_click=refresh_data)
     
     if 'skus' in st.session_state:
@@ -268,6 +266,7 @@ with tab2:
             key="hist_editor",
             use_container_width=True, 
             hide_index=True, 
+            num_rows="fixed", # Impide agregar o eliminar filas accidentalmente
             disabled=["Número de Análisis", "Fecha", "recepcion_num"],
             column_config={
                 "SKU": st.column_config.SelectboxColumn("SKU", options=sku_list),
@@ -326,12 +325,16 @@ with tab2:
                 st.rerun()
         
         # Botón para guardar cambios (requiere soporte en Apps Script)
-        if st.button("💾 GUARDAR CAMBIOS EN LA NUBE", type="secondary"):
+        # Confirmación para guardar cambios
+        st.warning("⚠️ Editar el historial sobrescribe los datos en la nube. Asegúrate de no haber borrado filas por error.")
+        confirm_save = st.checkbox("Confirmo que deseo actualizar el historial en la nube")
+        
+        if st.button("💾 GUARDAR CAMBIOS EN LA NUBE", type="primary", disabled=not confirm_save):
             with st.spinner("Guardando cambios..."):
-                # Aquí enviamos solo las filas modificadas o todo el lote
-                # Por simplicidad, implementaremos la lógica en el manager
                 ok, msg = st.session_state.manager.update_history_remote(edited_df, env=st.session_state.env)
-                if ok: st.success("✅ Historial actualizado correctamente en Google Sheets")
+                if ok: 
+                    st.success("✅ Historial actualizado correctamente en Google Sheets")
+                    st.rerun()
                 else: st.error(f"❌ Error al guardar: {msg}")
         
         st.divider()

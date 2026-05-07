@@ -151,7 +151,8 @@ class AnalysisManager:
                 str(data.get('Planta', '')), # 14va Columna: Planta
                 str(data.get('OC', '')), # 15va Columna: OC
                 str(data.get('realizado_por', '')), # 16va Columna: Realizado
-                str(data.get('controlado_por', '')) # 17va Columna: Controlado
+                str(data.get('controlado_por', '')), # 17va Columna: Controlado
+                str(data.get('recepcion_num', '')) # 18va Columna: Recepción
             ]
             
             payload = {
@@ -195,10 +196,12 @@ class AnalysisManager:
         if self.cached_xl and ws in self.cached_xl.sheet_names:
             df = self.cached_xl.parse(ws)
             if not df.empty:
-                # Filtrar la fila de instrucciones (fila 2 del Excel original)
-                patron_instrucciones = "toma|asignado|manual|ejemplo|ingresa|automatico|pestaña|carga"
+                # Filtrar solo la fila de ejemplo/instrucciones si existe (usualmente contiene estas palabras clave)
+                # Eliminamos 'carga' y 'manual' del patrón ya que son palabras comunes en datos reales
+                patron_instrucciones = "toma|asignado|ejemplo|ingresa|automatico|pestaña"
                 mask = df.astype(str).apply(lambda x: x.str.contains(patron_instrucciones, case=False, na=False)).any(axis=1)
-                df = df[~mask]
+                # Solo aplicar la máscara si la fila está entre las primeras 3 (típico de filas de cabecera/ejemplo)
+                df = df[~(mask & (df.index < 3))]
                 df = df.dropna(how='all')
             return df
         return pd.DataFrame()
