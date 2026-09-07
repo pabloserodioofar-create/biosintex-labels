@@ -53,6 +53,8 @@ if 'env' not in st.session_state:
     st.session_state.env = "Producción"
 if 'form_id' not in st.session_state:
     st.session_state.form_id = 0
+if 'submitting' not in st.session_state:
+    st.session_state.submitting = False
 
 def refresh_data():
     with st.spinner("Sincronizando..."):
@@ -158,33 +160,44 @@ with tab1:
         with c_st2: 
             cont = st.selectbox("Controlado por *", cont_options, key=f"cont_in_{f_id}")
 
-    if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
+    gen_clicked = st.button(
+        "🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True,
+        disabled=st.session_state.submitting
+    )
+
+    if gen_clicked and not st.session_state.submitting:
+        st.session_state.submitting = True
+        st.rerun()
+
+    if st.session_state.submitting:
         if not sku or not lote or not prov or real=="Seleccione...":
             st.error("⚠️ Faltan datos obligatorios.")
+            st.session_state.submitting = False
         else:
             with st.spinner("Generando Análisis en el servidor..."):
                 entry = {
-                    'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc, 
-                    'Número de Análisis': "PENDIENTE", 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm, 
-                    'Cantidad Bultos': bul, 'Vto': vto.strftime("%d/%m/%Y"), 'Proveedor': prov, 
-                    'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': 0, 
+                    'Fecha': datetime.now().strftime("%d/%m/%Y"), 'SKU': sku, 'Descripción de Producto': sku_desc,
+                    'Número de Análisis': "PENDIENTE", 'Lote': lote, 'Origen': origen, 'Cantidad': cant, 'UDM': udm,
+                    'Cantidad Bultos': bul, 'Vto': vto.strftime("%d/%m/%Y"), 'Proveedor': prov,
+                    'Número de Remito': rem, 'Presentacion': pres, 'recepcion_num': 0,
                     'realizado_por': real, 'controlado_por': cont, 'Entorno': st.session_state.env,
                     'Planta': planta, 'OC': oc
                 }
                 ok, result = st.session_state.manager.save_entry_remote(entry, env=st.session_state.env)
-                if ok:
-                    entry['Número de Análisis'] = result.get('analysis')
-                    entry['recepcion_num'] = result.get('reception')
-                    st.session_state.current_label = entry
-                    st.session_state.show_label = True
-                    
-                    # --- REINICIO TOTAL DEL FORMULARIO ---
-                    # Incrementamos el form_id para que todos los widgets tengan llaves nuevas
-                    st.session_state.form_id += 1
-                    
-                    st.session_state.just_saved = True
-                    st.rerun()
-                else: st.error(f"Error al guardar: {result}")
+            st.session_state.submitting = False
+            if ok:
+                entry['Número de Análisis'] = result.get('analysis')
+                entry['recepcion_num'] = result.get('reception')
+                st.session_state.current_label = entry
+                st.session_state.show_label = True
+
+                # --- REINICIO TOTAL DEL FORMULARIO ---
+                # Incrementamos el form_id para que todos los widgets tengan llaves nuevas
+                st.session_state.form_id += 1
+
+                st.session_state.just_saved = True
+                st.rerun()
+            else: st.error(f"Error al guardar: {result}")
 
 with tab2:
     # Mostrar mensaje de éxito si acaba de guardar
@@ -267,7 +280,7 @@ with tab2:
             use_container_width=True, 
             hide_index=True, 
             num_rows="fixed", # Impide agregar o eliminar filas accidentalmente
-            disabled=["Número de Análisis", "Fecha", "recepcion_num"],
+            disabled=["Número de Análisis", "Fecha"],
             column_config={
                 "SKU": st.column_config.SelectboxColumn("SKU", options=sku_list),
                 "Descripción de Producto": st.column_config.SelectboxColumn("Descripción de Producto", options=desc_list),

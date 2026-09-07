@@ -162,7 +162,7 @@ class AnalysisManager:
                 "env": env
             }
             
-            resp = requests.post(self.script_url, json=payload, timeout=20)
+            resp = requests.post(self.script_url, json=payload, timeout=35)
             if resp.status_code == 200:
                 result = resp.json()
                 if result.get("status") == "OK":
