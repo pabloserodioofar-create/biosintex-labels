@@ -244,7 +244,7 @@ with tab2:
         df_hist = df_hist.rename(columns=rename_map)
 
         # Forzar tipos string para evitar errores en data_editor con NaNs o tipos mezclados
-        for c in ["SKU", "Descripción de Producto", "Proveedor", "Presentacion", "Planta", "Origen", "UDM", "Número de Remito", "OC", "realizado_por", "controlado_por", "recepcion_num"]:
+        for c in ["SKU", "Descripción de Producto", "Proveedor", "Presentacion", "Planta", "Origen", "UDM", "Número de Remito", "OC", "realizado_por", "controlado_por", "recepcion_num", "Lote"]:
             if c in df_hist.columns:
                 df_hist[c] = df_hist[c].astype(str).replace('nan', '')
 
@@ -289,6 +289,7 @@ with tab2:
                 "Planta": st.column_config.SelectboxColumn("Planta", options=["Barracas", "Pibera", ""]),
                 "Origen": st.column_config.SelectboxColumn("Origen", options=["Nacional", "Importado", ""]),
                 "UDM": st.column_config.SelectboxColumn("UDM", options=udm_options),
+                "Lote": st.column_config.TextColumn("Lote"),
                 "Número de Remito": st.column_config.TextColumn("Nº Remito"),
                 "OC": st.column_config.TextColumn("Nº OC"),
                 "realizado_por": st.column_config.SelectboxColumn("Realizado por", options=staff_options),
