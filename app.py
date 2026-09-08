@@ -55,6 +55,8 @@ if 'form_id' not in st.session_state:
     st.session_state.form_id = 0
 if 'submitting' not in st.session_state:
     st.session_state.submitting = False
+if 'hist_editor_id' not in st.session_state:
+    st.session_state.hist_editor_id = 0
 
 def refresh_data():
     with st.spinner("Sincronizando..."):
@@ -276,7 +278,7 @@ with tab2:
         # Editor de datos con columnas configuradas como Selectbox
         edited_df = st.data_editor(
             df_hist, 
-            key="hist_editor",
+            key=f"hist_editor_{st.session_state.hist_editor_id}",
             use_container_width=True, 
             hide_index=True, 
             num_rows="fixed", # Impide agregar o eliminar filas accidentalmente
@@ -300,7 +302,8 @@ with tab2:
 
         # --- LÓGICA DE ASOCIACIÓN SKU <-> DESCRIPCIÓN ---
         # Detectar cambios a través del estado del editor de Streamlit
-        edits = st.session_state.get("hist_editor", {}).get("edited_rows", {})
+        editor_key = f"hist_editor_{st.session_state.hist_editor_id}"
+        edits = st.session_state.get(editor_key, {}).get("edited_rows", {})
         if edits:
             sku_to_desc = {str(s.get('Articulo', '')): str(s.get('Nombre', '')) for s in st.session_state.get('skus', []) if s.get('Articulo')}
             desc_to_sku = {str(s.get('Nombre', '')): str(s.get('Articulo', '')) for s in st.session_state.get('skus', []) if s.get('Nombre')}
@@ -308,34 +311,28 @@ with tab2:
             changes_made = False
             for row_idx_str, row_changes in edits.items():
                 idx = int(row_idx_str)
-                # Si cambió el SKU
+                # Aplicar todos los campos editados de la fila (Lote, Remito, Planta, etc.)
+                for col, val in row_changes.items():
+                    df_hist.at[idx, col] = val
+                    changes_made = True
+
+                # Si además cambió el SKU o la Descripción, sincronizar el otro campo
                 if "SKU" in row_changes:
-                    new_sku = str(row_changes["SKU"])
-                    new_desc = sku_to_desc.get(new_sku)
+                    new_desc = sku_to_desc.get(str(row_changes["SKU"]))
                     if new_desc:
-                        df_hist.at[idx, "SKU"] = new_sku
                         df_hist.at[idx, "Descripción de Producto"] = new_desc
-                        changes_made = True
-                
-                # Si cambió la Descripción
                 elif "Descripción de Producto" in row_changes:
-                    new_desc = str(row_changes["Descripción de Producto"])
-                    new_sku = desc_to_sku.get(new_desc)
+                    new_sku = desc_to_sku.get(str(row_changes["Descripción de Producto"]))
                     if new_sku:
-                        df_hist.at[idx, "Descripción de Producto"] = new_desc
                         df_hist.at[idx, "SKU"] = new_sku
-                        changes_made = True
-                
-                # Otros cambios (Remito, Planta, etc)
-                else:
-                    for col, val in row_changes.items():
-                        df_hist.at[idx, col] = val
-                        changes_made = True
             
             if changes_made:
                 st.session_state.history = df_hist
-                # Limpiamos el estado del editor para evitar bucles
-                st.session_state["hist_editor"]["edited_rows"] = {}
+                # Forzamos una key nueva para el editor: Streamlit ya no permite
+                # sobrescribir edited_rows directamente (session_state de widgets
+                # es de solo lectura), así que en vez de limpiarlo generamos un
+                # widget nuevo sin ediciones pendientes.
+                st.session_state.hist_editor_id += 1
                 st.rerun()
         
         # Botón para guardar cambios (requiere soporte en Apps Script)
