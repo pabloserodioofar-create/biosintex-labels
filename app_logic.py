@@ -168,7 +168,10 @@ class AnalysisManager:
                 if result.get("status") == "OK":
                     self.cached_xl = None # Limpiar caché para forzar descarga de nuevos datos
                     return True, result
-                return False, f"Server Error: {result.get('status')}"
+                detalle = result.get("error") or result.get("status")
+                if result.get("hojas_disponibles"):
+                    detalle += f" | Hojas disponibles: {result.get('hojas_disponibles')}"
+                return False, f"Server Error: {detalle}"
             return False, f"Error de conexión {resp.status_code}"
         except Exception as e:
             return False, str(e)

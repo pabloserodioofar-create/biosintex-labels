@@ -15,6 +15,20 @@ function doPost(e) {
       var stateSheet = ss.getSheetByName(params.env == "Producción" ? "State" : "State_Test");
       var dataSheet = ss.getSheetByName(params.sheet);
 
+      if (!stateSheet) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "ERROR",
+          error: "No se encontro la hoja de estado buscada: '" + (params.env == "Producción" ? "State" : "State_Test") + "'"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (!dataSheet) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "ERROR",
+          error: "No se encontro la hoja de datos buscada: '" + params.sheet + "'",
+          hojas_disponibles: ss.getSheets().map(function(s){ return s.getName(); })
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
       // Obtener y aumentar contadores
       var lastNum = parseInt(stateSheet.getRange(2, 1).getValue()) + 1;
       var lastRec = parseInt(stateSheet.getRange(2, 2).getValue()) + 1;
@@ -33,13 +47,24 @@ function doPost(e) {
       row[3] = an;       // Número de Análisis (índice 3)
       row[17] = lastRec; // Nº de Recepción real (índice 17) - ANTES quedaba en "0" siempre
 
+      var lastRowAntes = dataSheet.getLastRow();
       dataSheet.appendRow(row);
+      SpreadsheetApp.flush(); // Forzar que la escritura se confirme antes de responder
+      var lastRowDespues = dataSheet.getLastRow();
+
+      Logger.log("save_entry OK -> spreadsheetId=" + ss.getId() + " hoja=" + dataSheet.getName() + " lastRowAntes=" + lastRowAntes + " lastRowDespues=" + lastRowDespues + " row=" + JSON.stringify(row));
 
       // Devolver los números generados a la App para que los muestre en el rótulo
+      // + info de diagnostico para confirmar en que hoja/planilla exacta escribio
       return ContentService.createTextOutput(JSON.stringify({
         status: "OK",
         analysis: an,
-        reception: lastRec
+        reception: lastRec,
+        debug_spreadsheetId: ss.getId(),
+        debug_spreadsheetName: ss.getName(),
+        debug_hoja: dataSheet.getName(),
+        debug_lastRowAntes: lastRowAntes,
+        debug_lastRowDespues: lastRowDespues
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

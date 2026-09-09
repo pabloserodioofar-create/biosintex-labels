@@ -109,6 +109,10 @@ with st.sidebar:
     if hasattr(st.session_state.manager, 'last_sync') and st.session_state.manager.last_sync:
         st.caption(f"🕒 Sinc: {st.session_state.manager.last_sync.strftime('%H:%M:%S')}")
 
+    if st.session_state.get('last_save_debug'):
+        with st.expander("🛠️ Diagnóstico del último guardado"):
+            st.json(st.session_state.last_save_debug)
+
 tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
 
 with tab1:
@@ -192,6 +196,10 @@ with tab1:
                 entry['recepcion_num'] = result.get('reception')
                 st.session_state.current_label = entry
                 st.session_state.show_label = True
+                st.session_state.last_save_debug = {
+                    k: result.get(k) for k in
+                    ["debug_spreadsheetId", "debug_spreadsheetName", "debug_hoja", "debug_lastRowAntes", "debug_lastRowDespues"]
+                }
 
                 # --- REINICIO TOTAL DEL FORMULARIO ---
                 # Incrementamos el form_id para que todos los widgets tengan llaves nuevas
