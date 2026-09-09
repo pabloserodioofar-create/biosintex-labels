@@ -18,8 +18,9 @@ PRES_LIST = [
     "Bobinas", "Cajas blancas", "Tambores verdes", "Bidón azul", 
     "Bidón", "Bidón blanco", "Bidón negro", "Cuñete de cartón", 
     "Bolsa negra", "Bidón amarillo", "Tambor", "Balde", "Tambor azul", 
-    "Cuñete", "Cuñete azul", "Cuñete plástico", "Caja de cartón", 
-    "Cajas plásticas", "Bolsas de cartón", "Otros"
+    "Cuñete", "Cuñete azul", "Cuñete plástico", "Caja de cartón",
+    "Cajas plásticas", "Bolsas de cartón",
+    "Recipiente vidrio", "Recipiente metálico", "Recipiente plástico", "Otros"
 ]
 
 STAFF_BY_PLANT = {
