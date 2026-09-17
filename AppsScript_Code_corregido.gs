@@ -29,28 +29,30 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
       }
 
-      // Obtener y aumentar contadores
+      // Calcular (sin confirmar todavia) cual seria el proximo numero
       var lastNum = parseInt(stateSheet.getRange(2, 1).getValue()) + 1;
       var lastRec = parseInt(stateSheet.getRange(2, 2).getValue()) + 1;
       var currentYear = new Date().getFullYear() % 100;
+      var an = ("0000" + lastNum).slice(-4) + "/" + currentYear;
 
-      // Actualizar la hoja de Estado
+      var row = params.row;
+      row[3] = an;       // Número de Análisis (índice 3)
+      row[17] = lastRec; // Nº de Recepción real (índice 17)
+
+      // IMPORTANTE: primero guardamos la fila. Recien si esto no tira error
+      // confirmamos el numero en la hoja State. Asi, si algo falla ac
+      // (se corta la conexion, error de Google, etc.), el numero NO se
+      // consume y el proximo intento reutiliza el mismo, en vez de saltarlo.
+      var lastRowAntes = dataSheet.getLastRow();
+      dataSheet.appendRow(row);
+      SpreadsheetApp.flush(); // Forzar que la escritura se confirme antes de seguir
+      var lastRowDespues = dataSheet.getLastRow();
+
+      // Recien ahora, con la fila ya guardada, confirmamos el contador
       stateSheet.getRange(2, 1).setValue(lastNum);
       stateSheet.getRange(2, 2).setValue(lastRec);
       stateSheet.getRange(2, 3).setValue(currentYear);
-
-      // Formatear el número de análisis (ej: 0001/26)
-      var an = ("0000" + lastNum).slice(-4) + "/" + currentYear;
-
-      // Insertar el número generado en la fila que mandó la App
-      var row = params.row;
-      row[3] = an;       // Número de Análisis (índice 3)
-      row[17] = lastRec; // Nº de Recepción real (índice 17) - ANTES quedaba en "0" siempre
-
-      var lastRowAntes = dataSheet.getLastRow();
-      dataSheet.appendRow(row);
-      SpreadsheetApp.flush(); // Forzar que la escritura se confirme antes de responder
-      var lastRowDespues = dataSheet.getLastRow();
+      SpreadsheetApp.flush();
 
       Logger.log("save_entry OK -> spreadsheetId=" + ss.getId() + " hoja=" + dataSheet.getName() + " lastRowAntes=" + lastRowAntes + " lastRowDespues=" + lastRowDespues + " row=" + JSON.stringify(row));
 
@@ -82,6 +84,14 @@ function doPost(e) {
 
     return ContentService.createTextOutput(JSON.stringify({ status: "Acción desconocida: " + params.action })).setMimeType(ContentService.MimeType.JSON);
 
+  } catch (fatalErr) {
+    // Cualquier error no previsto: lo devolvemos como JSON en vez de dejar
+    // que Apps Script tire una pagina de error generica (que el cliente
+    // no puede interpretar y hace ver que "se cerro" la app).
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "ERROR",
+      error: "Excepcion no controlada: " + fatalErr.message
+    })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     // Soltar el candado para que entre la siguiente petición
     lock.releaseLock();
