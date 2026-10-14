@@ -246,3 +246,35 @@ class AnalysisManager:
             return False, f"Error {resp.status_code}"
         except Exception as e:
             return False, str(e)
+
+
+def normalize_history_columns(df):
+    """Renombra columnas 'Unnamed' / descriptivas a las claves internas (sin crear duplicados)."""
+    target_names = ["realizado_por", "controlado_por", "recepcion_num", "Planta", "OC"]
+    rename_map = {}
+    cols = list(df.columns)
+
+    # Primero detectamos qué nombres "buenos" YA existen
+    existing_good = [c for c in cols if c in target_names]
+
+    for i, col in enumerate(cols):
+        c_low = str(col).lower()
+        new_name = None
+
+        # Solo intentamos renombrar si es un "Unnamed" o no es uno de nuestros nombres buenos
+        if "unnamed" in c_low:
+            if i == 13: new_name = "Planta"
+            elif i == 14: new_name = "OC"
+            elif i == 15: new_name = "realizado_por"
+            elif i == 16: new_name = "controlado_por"
+            elif i == 17: new_name = "recepcion_num"
+
+        # Si encontramos un nombre descriptivo pero que no es exactamente nuestra clave
+        elif "realizado" in c_low and "realizado_por" not in existing_good: new_name = "realizado_por"
+        elif "controlado" in c_low and "controlado_por" not in existing_good: new_name = "controlado_por"
+        elif "recep" in c_low and "recepcion_num" not in existing_good: new_name = "recepcion_num"
+
+        if new_name and new_name not in rename_map.values() and new_name not in existing_good:
+            rename_map[col] = new_name
+
+    return df.rename(columns=rename_map)

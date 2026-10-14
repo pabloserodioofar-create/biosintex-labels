@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from app_logic import AnalysisManager
+from app_logic import AnalysisManager, normalize_history_columns
+from dashboard import render_dashboard
 from streamlit_searchbox import st_searchbox
 from datetime import datetime
 
@@ -24,8 +25,8 @@ PRES_LIST = [
 ]
 
 STAFF_BY_PLANT = {
-    "Barracas": ["Ruben Guzman", "Gaston Fonteina", "Adrian Fernandez", "Walter Alarcon", "Maximiliano Duarte"],
-    "Pibera": ["Hernan Miño", "Sebastian Colmano", "Gustavo Alegre", "Federico Scolazzo"]
+    "Barracas": ["Ruben Guzman", "Gaston Fonteina", "Adrian Fernandez", "Walter Alarcon"],
+    "Pibera": ["Hernan Miño", "Sebastian Colmano", "Gustavo Alegre", "Federico Scolazzo", "Maximiliano Duarte"]
 }
 
 # Mensaje recordatorio
@@ -114,7 +115,7 @@ with st.sidebar:
         with st.expander("🛠️ Diagnóstico del último guardado"):
             st.json(st.session_state.last_save_debug)
 
-tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
+tab1, tab2, tab3 = st.tabs(["📝 Nuevo Registro", "📊 Historial", "📈 Dashboard"])
 
 with tab1:
     f_id = st.session_state.form_id
@@ -222,37 +223,7 @@ with tab2:
         st.rerun()
 
     if 'history' in st.session_state and not st.session_state.history.empty:
-        df_hist = st.session_state.history.copy()
-        
-        # --- NORMALIZACIÓN DE NOMBRES DE COLUMNAS (Sin crear duplicados) ---
-        target_names = ["realizado_por", "controlado_por", "recepcion_num", "Planta", "OC"]
-        rename_map = {}
-        cols = list(df_hist.columns)
-        
-        # Primero detectamos qué nombres "buenos" YA existen
-        existing_good = [c for c in cols if c in target_names]
-        
-        for i, col in enumerate(cols):
-            c_low = str(col).lower()
-            new_name = None
-            
-            # Solo intentamos renombrar si es un "Unnamed" o no es uno de nuestros nombres buenos
-            if "unnamed" in c_low:
-                if i == 13: new_name = "Planta"
-                elif i == 14: new_name = "OC"
-                elif i == 15: new_name = "realizado_por"
-                elif i == 16: new_name = "controlado_por"
-                elif i == 17: new_name = "recepcion_num"
-            
-            # Si encontramos un nombre descriptivo pero que no es exactamente nuestra clave
-            elif "realizado" in c_low and "realizado_por" not in existing_good: new_name = "realizado_por"
-            elif "controlado" in c_low and "controlado_por" not in existing_good: new_name = "controlado_por"
-            elif "recep" in c_low and "recepcion_num" not in existing_good: new_name = "recepcion_num"
-            
-            if new_name and new_name not in rename_map.values() and new_name not in existing_good:
-                rename_map[col] = new_name
-        
-        df_hist = df_hist.rename(columns=rename_map)
+        df_hist = normalize_history_columns(st.session_state.history.copy())
 
         # Forzar tipos string para evitar errores en data_editor con NaNs o tipos mezclados
         for c in ["SKU", "Descripción de Producto", "Proveedor", "Presentacion", "Planta", "Origen", "UDM", "Número de Remito", "OC", "realizado_por", "controlado_por", "recepcion_num", "Lote"]:
@@ -391,6 +362,12 @@ with tab2:
             st.rerun()
     else:
         st.write("No hay datos cargados. Presiona 'Refrescar Historial'.")
+
+with tab3:
+    st.subheader(f"📈 Dashboard de Ingresos ({st.session_state.env})")
+    if st.button("🔄 Actualizar datos", key="dash_refresh"):
+        st.session_state.history = st.session_state.manager.get_history(env=st.session_state.env)
+    render_dashboard(normalize_history_columns(st.session_state.get('history', pd.DataFrame()).copy()))
 
 if st.session_state.get('show_label'):
     d = st.session_state.current_label
