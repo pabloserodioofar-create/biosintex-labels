@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import streamlit as st
 import pandas as pd
 from app_logic import AnalysisManager, normalize_history_columns
@@ -34,6 +36,31 @@ if "AKfycb" not in SCRIPT_URL:
     st.error("🛑 FALTA CONFIGURAR LA URL DE ESCRITURA. Ve al archivo app.py y pega tu URL de Apps Script en la línea 8.")
 
 # --- LOGIN ---
+# Roles: "operador" ve Nuevo Registro e Historial; "admin" ve además el Dashboard.
+# La contraseña del usuario admin se guarda solo como hash (el repo es público).
+USERS = {
+    "biosintex": {"password": "2026", "role": "operador"},
+    "dashboard": {
+        "salt": "439bd5260635cdacaa4ec561519cb959",
+        "hash": "7c29027a35b4b42e586a21e74c305eb99baab521786e4847735a74761a8fd02d",
+        "role": "admin",
+    },
+}
+
+
+def check_login(user, password):
+    """Devuelve el rol si las credenciales son válidas, o None."""
+    cfg = USERS.get(user.strip())
+    if not cfg:
+        return None
+    if "hash" in cfg:
+        calc = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(cfg["salt"]), 200_000).hex()
+        ok = hmac.compare_digest(calc, cfg["hash"])
+    else:
+        ok = hmac.compare_digest(password.encode(), cfg["password"].encode())
+    return cfg["role"] if ok else None
+
+
 if "password_correct" not in st.session_state:
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Biosintex</h2>", unsafe_allow_html=True)
     _, col, _ = st.columns([1,1.5,1])
@@ -42,11 +69,16 @@ if "password_correct" not in st.session_state:
             u = st.text_input("Usuario")
             p = st.text_input("Contraseña", type="password")
             if st.form_submit_button("Entrar"):
-                if u == "biosintex" and p == "2026":
+                role = check_login(u, p)
+                if role:
                     st.session_state["password_correct"] = True
+                    st.session_state["role"] = role
                     st.rerun()
                 else: st.error("❌ Credenciales incorrectas")
     st.stop()
+
+# Sesiones sin rol registrado (iniciadas antes de este cambio) quedan con el menor acceso
+IS_ADMIN = st.session_state.get("role") == "admin"
 
 # --- INIT ---
 if 'manager' not in st.session_state:
@@ -103,7 +135,10 @@ with st.sidebar:
     # El entorno se fuerza a Producción por solicitud del usuario
     st.session_state.env = "Producción"
     st.button("🔄 Sincronizar", on_click=refresh_data)
-    
+    if st.button("🚪 Cerrar sesión"):
+        st.session_state.clear()
+        st.rerun()
+
     if 'skus' in st.session_state:
         st.caption(f"✅ {len(st.session_state.skus)} SKUs cargados")
     if 'providers' in st.session_state:
@@ -115,7 +150,11 @@ with st.sidebar:
         with st.expander("🛠️ Diagnóstico del último guardado"):
             st.json(st.session_state.last_save_debug)
 
-tab1, tab2, tab3 = st.tabs(["📝 Nuevo Registro", "📊 Historial", "📈 Dashboard"])
+if IS_ADMIN:
+    tab1, tab2, tab3 = st.tabs(["📝 Nuevo Registro", "📊 Historial", "📈 Dashboard"])
+else:
+    tab1, tab2 = st.tabs(["📝 Nuevo Registro", "📊 Historial"])
+    tab3 = None
 
 with tab1:
     f_id = st.session_state.form_id
@@ -363,11 +402,12 @@ with tab2:
     else:
         st.write("No hay datos cargados. Presiona 'Refrescar Historial'.")
 
-with tab3:
-    st.subheader(f"📈 Dashboard de Ingresos ({st.session_state.env})")
-    if st.button("🔄 Actualizar datos", key="dash_refresh"):
-        st.session_state.history = st.session_state.manager.get_history(env=st.session_state.env)
-    render_dashboard(normalize_history_columns(st.session_state.get('history', pd.DataFrame()).copy()))
+if IS_ADMIN:
+    with tab3:
+        st.subheader(f"📈 Dashboard de Ingresos ({st.session_state.env})")
+        if st.button("🔄 Actualizar datos", key="dash_refresh"):
+            st.session_state.history = st.session_state.manager.get_history(env=st.session_state.env)
+        render_dashboard(normalize_history_columns(st.session_state.get('history', pd.DataFrame()).copy()))
 
 if st.session_state.get('show_label'):
     d = st.session_state.current_label
